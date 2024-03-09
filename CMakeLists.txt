@@ -24,8 +24,9 @@ set(LLVM_LINK_COMPONENTS
   Option
   Support
   Symbolize
-  ARM
   X86
+  ARM
+  RISCV
   )
 
 add_subdirectory(Raiser)
