@@ -1,3 +1,17 @@
 build
 *.swp
 *~
+
+# Ignore IDE specific files
+.vscode/
+
+# Ignore CMake files
+CMakeFiles/
+cmake_install.cmake
+CMakeCache.txt
+install_manifest.txt
+Makefile
+
+# Ignore clangd files
+.cache/
+compile_commands.json
