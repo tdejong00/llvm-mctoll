@@ -1428,10 +1428,10 @@ static void dumpInput(StringRef File) {
         errs() << "Raising x64 relocatable (.o) x64 binaries not supported\n";
         exit(1);
       }
-    } else if (O->getArch() == Triple::arm)
+    } else if (O->getArch() == Triple::arm || O->getArch() == Triple::riscv64)
       dumpObject(O);
     else {
-      errs() << "\n\n*** No support to raise Binaries other than x64 and ARM\n"
+      errs() << "\n\n*** No support to raise Binaries other than x64, ARM, and RISCV\n"
              << "*** Please consider contributing support to raise other "
                 "ISAs. Thanks!\n";
       exit(1);
