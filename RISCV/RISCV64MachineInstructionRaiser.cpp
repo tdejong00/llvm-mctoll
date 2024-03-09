@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "MCTargetDesc/RISCVMCTargetDesc.h"
-#include "RISCVSubtarget.h"
 #include "RISCV64MachineInstructionRaiser.h"
 #include "RISCVModuleRaiser.h"
 #include "Raiser/MachineFunctionRaiser.h"
@@ -36,7 +35,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include <algorithm>
-#include <cstddef>
 
 #define DEBUG_TYPE "mctoll"
 
@@ -72,8 +70,29 @@ bool RISCV64MachineInstructionRaiser::raise() {
 }
 
 FunctionType *RISCV64MachineInstructionRaiser::getRaisedFunctionPrototype() {
-  errs() << "Not yet implemented: RISCV64MachineInstructionRaiser::getRaisedFunctionPrototype\n";
-  return nullptr;
+  assert(!MF.empty() && "The function body is empty.");
+  MF.getRegInfo().freezeReservedRegs(MF);
+
+  LLVM_DEBUG(dbgs() << "RISCV64 -- getRaisedFunctionPrototype -- START\n");
+
+  // Determine return type and argument types
+  Type *ReturnType = determineReturnType();
+  std::vector<Type *> ArgumentTypes = determineArgumentTypes();
+
+  // Remove placeholder function
+  Module *M = const_cast<Module *>(MF.getMMI().getModule());
+  M->getFunctionList().remove(MF.getFunction());
+  
+  // Create function prototype
+  FunctionType *FT = FunctionType::get(ReturnType, ArgumentTypes, false);
+  Function *FunctionPrototype = Function::Create(FT, GlobalValue::ExternalLinkage, 
+                                                 MF.getFunction().getName(), M);
+  
+  RaisedFunction = FunctionPrototype;
+
+  LLVM_DEBUG(dbgs() << "RISCV64 -- getRaisedFunctionPrototype -- END\n");
+
+  return RaisedFunction->getFunctionType();
 }
 
 int RISCV64MachineInstructionRaiser::getArgumentNumber(unsigned PReg) {
@@ -89,4 +108,45 @@ Value *RISCV64MachineInstructionRaiser::getRegOrArgValue(unsigned PReg, int MBBN
 bool RISCV64MachineInstructionRaiser::buildFuncArgTypeVector(const std::set<MCPhysReg> &, std::vector<Type *> &) {
   errs() << "Not yet implemented: RISCV64MachineInstructionRaiser::buildFuncArgTypeVector\n";
   return false;
+}
+
+MachineBasicBlock::const_reverse_iterator RISCV64MachineInstructionRaiser::findInstruction(unsigned Op, 
+                                                                                           const MachineBasicBlock &MBB) {
+  auto Pred = [Op](const MachineInstr &MI) { return MI.getDesc().getOpcode() == Op; };
+  return std::find_if(MBB.rbegin(), MBB.rend(), Pred);
+}
+ 
+MachineBasicBlock::const_reverse_iterator RISCV64MachineInstructionRaiser::findInstruction(unsigned Reg, 
+                                                                                           const MachineBasicBlock &MBB, 
+                                                                                           MachineBasicBlock::const_reverse_iterator EndIt) {
+  // Determine if register is being defined and that it is not tied to another register operand
+  auto MOPred = [&Reg](const MachineOperand &MO) {
+    return MO.isReg() && MO.getReg() == Reg && MO.isDef() && !MO.isTied();
+  };
+
+  // Find the iterator which defines the specified register  
+  return std::find_if(MBB.rbegin(), EndIt, [&MOPred](const MachineInstr &MI) {
+    return std::find_if(MI.operands_begin(), MI.operands_end(), MOPred) != MI.operands_end();
+  });
+}
+
+std::vector<Type *> RISCV64MachineInstructionRaiser::determineArgumentTypes() {
+  std::vector<Type *> ArgumentTypes;
+  // TODO: discover argument types
+  return ArgumentTypes;
+}
+
+Type *RISCV64MachineInstructionRaiser::determineReturnType() {
+  for (const MachineBasicBlock &MBB : MF) {
+    // Check if the basic block calls another function. If so, only search for the a0 register
+    // after that instruction, because the a0 register might be defined as a function parameter.
+    auto It = findInstruction(RISCV::JAL, MBB);
+    // Check if basic block defines the a0 register as a return value, searching only after the last
+    // call instruction or from the beginning of the basic block if no call instruction is present.
+    if (findInstruction(RISCV::X10, MBB, It) != It) {
+      // TODO: determine type of return register, for now default is used
+      return Type::getIntNTy(MF.getFunction().getContext(), MF.getDataLayout().getPointerSizeInBits());
+    }
+  }
+  return Type::getVoidTy(MF.getFunction().getContext());
 }
