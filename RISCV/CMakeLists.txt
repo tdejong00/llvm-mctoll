@@ -17,6 +17,8 @@ add_llvm_component_library(mctollRISCVRaiser
   RISCV64ModuleRaiser.cpp
   RISCVCallingConvention.cpp
 
+  RISCV64FunctionPrototypeDiscoverer.cpp
+
   DEPENDS
     ${LLVM_MCTOLL_DEPS}
   )

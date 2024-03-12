@@ -31,19 +31,6 @@ public:
   int getArgumentNumber(unsigned PReg) override;
   Value *getRegOrArgValue(unsigned PReg, int MBBNo) override;
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &, std::vector<Type *> &) override;
-
-private:
-  /// Finds the instruction in the specified basic block which has the specified opcode.
-  MachineBasicBlock::const_reverse_iterator findInstruction(unsigned Op, const MachineBasicBlock &MBB);
-
-  /// Finds the instruction in the specified basic block which defines the specified register.
-  MachineBasicBlock::const_reverse_iterator findInstruction(unsigned Reg, const MachineBasicBlock &MBB, MachineBasicBlock::const_reverse_iterator EndIt);
-  
-  /// Determines the parameter types of the current MachineFunction of this raiser.
-  std::vector<Type *> determineArgumentTypes();
-  
-  /// Determines the return type of the current MachineFunction of this raiser.
-  Type *determineReturnType();
 };
 
 } // end namespace mctoll
