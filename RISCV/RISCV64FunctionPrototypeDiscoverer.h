@@ -24,8 +24,8 @@ namespace mctoll {
 
 class RISCV64FunctionPrototypeDiscoverer {
 public:
-  RISCV64FunctionPrototypeDiscoverer(MachineFunction &MF) 
-    : MF(MF), C(MF.getFunction().getContext()) {}
+  RISCV64FunctionPrototypeDiscoverer(MachineFunction &MF)
+      : MF(MF), C(MF.getFunction().getContext()) {}
 
   /// Discovers the function prototype of the machine function.
   Function *discoverFunctionPrototype() const;

@@ -11,10 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Raiser/IncludedFileInfo.h"
 #include "RISCVModuleRaiser.h"
 #include "Raiser/MachineFunctionRaiser.h"
-#include "llvm-mctoll.h"
 
 using namespace llvm;
 using namespace llvm::mctoll;
@@ -31,9 +29,9 @@ MachineFunctionRaiser *RISCV32ModuleRaiser::CreateAndAddMachineFunctionRaiser(
       *M, MR->getMachineModuleInfo()->getOrCreateMachineFunction(*F), MR, Start,
       End);
 
-  //TODO: Need to create RISCV32MachineInstrucitionRaiser
-  //MFR->setMachineInstrRaiser(new X86MachineInstructionRaiser(
-  //  MFR->getMachineFunction(), MR, MFR->getMCInstRaiser()));
+  // TODO: Need to create RISCV32MachineInstrucitionRaiser
+  // MFR->setMachineInstrRaiser(new X86MachineInstructionRaiser(
+  //   MFR->getMachineFunction(), MR, MFR->getMCInstRaiser()));
 
   MFRaiserVector.push_back(MFR);
   return MFR;

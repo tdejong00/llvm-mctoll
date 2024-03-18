@@ -1,12 +1,11 @@
 
-#include "MCTargetDesc/RISCVMCTargetDesc.h"
 #include "RISCVCallingConvention.h"
+#include "MCTargetDesc/RISCVMCTargetDesc.h"
 
 using namespace llvm;
 using namespace llvm::RISCV;
 
-void
-RISCVCallingConvention::addIntRegs8() {
+void RISCVCallingConvention::addIntRegs8() {
   addIntArgRegister(X10);
   addIntArgRegister(X11);
   addIntArgRegister(X12);
@@ -17,8 +16,7 @@ RISCVCallingConvention::addIntRegs8() {
   addIntArgRegister(X17);
 }
 
-void
-RISCVCallingConvention::addFloatRegsSingle() {
+void RISCVCallingConvention::addFloatRegsSingle() {
   addFloatArgRegister(F10_F);
   addFloatArgRegister(F11_F);
   addFloatArgRegister(F12_F);
@@ -29,8 +27,7 @@ RISCVCallingConvention::addFloatRegsSingle() {
   addFloatArgRegister(F17_F);
 }
 
-void
-RISCVCallingConvention::addFloatRegsDouble() {
+void RISCVCallingConvention::addFloatRegsDouble() {
   addFloatArgRegister(F10_D);
   addFloatArgRegister(F11_D);
   addFloatArgRegister(F12_D);
@@ -45,7 +42,7 @@ RISCVILP32::RISCVILP32() : RISCVCallingConventionI32() {
   RISCVCallingConvention::addIntRegs8();
 }
 
-RISCVILP32F::RISCVILP32F() : RISCVCallingConventionI32(){
+RISCVILP32F::RISCVILP32F() : RISCVCallingConventionI32() {
   RISCVCallingConvention::addIntRegs8();
   RISCVCallingConvention::addFloatRegsSingle();
 }
@@ -68,7 +65,7 @@ RISCVLP64::RISCVLP64() : RISCVCallingConventionI64() {
   RISCVCallingConvention::addIntRegs8();
 }
 
-RISCVLP64F::RISCVLP64F() : RISCVCallingConventionI64(){
+RISCVLP64F::RISCVLP64F() : RISCVCallingConventionI64() {
   RISCVCallingConvention::addIntRegs8();
   RISCVCallingConvention::addFloatRegsSingle();
 }

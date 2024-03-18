@@ -23,20 +23,21 @@ namespace llvm {
 namespace mctoll {
 namespace riscv_utils {
 
-/// Gets the default integer type based on the data layout of the machine function.
+/// Gets the default integer type.
 IntegerType *getDefaultIntType(MachineFunction &MF);
 
-/// Gets the default pointer type based on the data layout of the machine function.
+/// Gets the default pointer type.
 PointerType *getDefaultPtrType(MachineFunction &MF);
 
-/// Determines whether the machine instruction is a part of the prolog. 
+/// Determines whether the machine instruction is a part of the prolog.
 bool isPrologInstruction(const MachineInstr &MI);
 
 /// Determines whether the machine instruction is a part of the epilog.
 bool isEpilogInstruction(const MachineInstr &MI);
 
 /// Returns the iterator of the first instruction after the prolog.
-MachineBasicBlock::const_instr_iterator skipProlog(const MachineBasicBlock &MBB);
+MachineBasicBlock::const_instr_iterator
+skipProlog(const MachineBasicBlock &MBB);
 
 /// Removes the prolog instructions from the basic block.
 void removeProlog(MachineBasicBlock *MBB);
@@ -44,15 +45,17 @@ void removeProlog(MachineBasicBlock *MBB);
 /// Removes the epilog instructions from the basic block.
 void removeEpilog(MachineBasicBlock *MBB);
 
-/// Finds the instruction in the basic block which has the given opcode. 
+/// Finds the instruction in the basic block which has the given opcode.
 /// Only search up until the given end iterator.
-MachineBasicBlock::const_reverse_instr_iterator findInstructionByOpcode(
-  const MachineBasicBlock &MBB, unsigned Op, MachineBasicBlock::const_reverse_instr_iterator EndIt);
+MachineBasicBlock::const_reverse_instr_iterator
+findInstructionByOpcode(const MachineBasicBlock &MBB, unsigned Op,
+                        MachineBasicBlock::const_reverse_instr_iterator EndIt);
 
-/// Finds the instruction in the basic block which defines the given register number. 
-/// Only search up until the given end iterator.
-MachineBasicBlock::const_reverse_instr_iterator findInstructionByRegNo(
-  const MachineBasicBlock &MBB, unsigned RegNO, MachineBasicBlock::const_reverse_instr_iterator EndIt);
+/// Finds the instruction in the basic block which defines the given register
+/// number. Only search up until the given end iterator.
+MachineBasicBlock::const_reverse_instr_iterator
+findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned RegNO,
+                       MachineBasicBlock::const_reverse_instr_iterator EndIt);
 
 } // end namespace riscv_utils
 } // end namespace mctoll

@@ -1,4 +1,4 @@
-//===-- RISCVModuleRaiser.h ---------------------------------------*- C++ -*-===//
+//===-- RISCVModuleRaiser.h -------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -17,7 +17,7 @@
 #include "Raiser/ModuleRaiser.h"
 
 namespace llvm {
-namespace  mctoll {
+namespace mctoll {
 
 class RISCV32ModuleRaiser : public ModuleRaiser {
 public:
