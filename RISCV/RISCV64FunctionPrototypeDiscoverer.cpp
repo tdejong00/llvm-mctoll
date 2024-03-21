@@ -17,6 +17,7 @@
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
+#include "llvm/IR/CallingConv.h"
 
 using namespace llvm;
 using namespace llvm::mctoll;
@@ -36,8 +37,11 @@ RISCV64FunctionPrototypeDiscoverer::discoverFunctionPrototype() const {
 
   // Create function prototype
   FunctionType *FT = FunctionType::get(ReturnType, ArgumentTypes, false);
-  return Function::Create(FT, GlobalValue::ExternalLinkage,
-                          MF.getFunction().getName(), M);
+  Function *F = Function::Create(FT, GlobalValue::ExternalLinkage,
+                                 MF.getFunction().getName(), M);
+  F->setCallingConv(CallingConv::C);
+  F->setDSOLocal(true);
+  return F;
 }
 
 Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
