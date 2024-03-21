@@ -59,11 +59,20 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
     auto DefineIt = findInstructionByRegNo(MBB, RISCV::X10, CallIt);
 
     if (DefineIt != CallIt) {
-      // TODO: discover if return value is a pointer
-      // TODO: discover size of return value
-      Ty = getDefaultIntType(MF);
-      Type::getIntNTy(C, MF.getDataLayout().getPointerSizeInBits());
-      break;
+      // Check if pointer return type
+      const MachineOperand &MOp = DefineIt->getOperand(1);
+      if (MOp.isReg()) {
+        for (; DefineIt != MBB.instr_rend(); ++DefineIt) {
+          if (DefineIt->definesRegister(MOp.getReg()) &&
+              DefineIt->getOpcode() == RISCV::ADDI &&
+              DefineIt->getPrevNode()->getOpcode() == RISCV::AUIPC) {
+            return getDefaultPtrType(MF);
+          }
+        }
+      }
+
+      // Assume integer return type
+      return getDefaultIntType(MF);
     }
   }
 
@@ -83,14 +92,17 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
       // Loop over parameter registers (a0 - a7)
       for (unsigned RegNo = RISCV::X10; RegNo < RISCV::X17; RegNo++) {
         // Get source operand
-        const MachineOperand &SrcOp = It->getOperand(1);
+        const MachineOperand &MOp1 = It->getOperand(0);
+        const MachineOperand &MOp2 = It->getOperand(1);
 
-        // Parameter register is moved to local register or is stored on the
-        // stack
-        if (SrcOp.isReg() && SrcOp.getReg() == RegNo) {
-          // TODO: discover if return value is a pointer
-          // TODO: discover size of return value
+        // Parameter register is moved to local register
+        if (It->getOpcode() == RISCV::C_MV && MOp2.isReg() && MOp2.getReg() == RegNo) {
           ArgumentTypes.push_back(getDefaultIntType(MF));
+        }
+        // Parameter register is stored on stack, could be a pointer
+        // TODO: this assumption is most likely not fool-proof
+        else if (It->getOpcode() == RISCV::SD && MOp1.isReg() && MOp1.getReg() == RegNo) {
+          ArgumentTypes.push_back(getDefaultPtrType(MF));
         }
       }
       ++It;
