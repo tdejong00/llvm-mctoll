@@ -126,9 +126,7 @@ riscv_utils::findInstructionByRegNo(
     const MachineBasicBlock &MBB, unsigned int RegNo,
     MachineBasicBlock::const_reverse_instr_iterator EndIt) {
   auto Pred = [&RegNo](const MachineInstr &MI) {
-    const MachineOperand &DstOp = MI.getOperand(0);
-    return DstOp.isReg() && DstOp.getReg() == RegNo && DstOp.isDef() &&
-           !DstOp.isTied();
+    return MI.definesRegister(RegNo);
   };
   return std::find_if(MBB.instr_rbegin(), EndIt, Pred);
 }

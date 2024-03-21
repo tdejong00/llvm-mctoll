@@ -25,25 +25,17 @@ namespace riscv_utils {
 
 /// Gets the default integer type.
 IntegerType *getDefaultIntType(MachineFunction &MF);
-
 /// Gets the default pointer type.
 PointerType *getDefaultPtrType(MachineFunction &MF);
 
 /// Determines whether the machine instruction is a part of the prolog.
 bool isPrologInstruction(const MachineInstr &MI);
-
 /// Determines whether the machine instruction is a part of the epilog.
 bool isEpilogInstruction(const MachineInstr &MI);
 
 /// Returns the iterator of the first instruction after the prolog.
 MachineBasicBlock::const_instr_iterator
 skipProlog(const MachineBasicBlock &MBB);
-
-/// Removes the prolog instructions from the basic block.
-void removeProlog(MachineBasicBlock *MBB);
-
-/// Removes the epilog instructions from the basic block.
-void removeEpilog(MachineBasicBlock *MBB);
 
 /// Finds the instruction in the basic block which has the given opcode.
 /// Only search up until the given end iterator.
