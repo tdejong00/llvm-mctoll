@@ -96,12 +96,14 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
         const MachineOperand &MOp2 = It->getOperand(1);
 
         // Parameter register is moved to local register
-        if (It->getOpcode() == RISCV::C_MV && MOp2.isReg() && MOp2.getReg() == RegNo) {
+        if (It->getOpcode() == RISCV::C_MV && MOp2.isReg() &&
+            MOp2.getReg() == RegNo) {
           ArgumentTypes.push_back(getDefaultIntType(MF));
         }
         // Parameter register is stored on stack, could be a pointer
-        // TODO: this assumption is most likely not fool-proof
-        else if (It->getOpcode() == RISCV::SD && MOp1.isReg() && MOp1.getReg() == RegNo) {
+        // TODO: this assumption is most likely not sound
+        else if (It->getOpcode() == RISCV::SD && MOp1.isReg() &&
+                 MOp1.getReg() == RegNo) {
           ArgumentTypes.push_back(getDefaultPtrType(MF));
         }
       }
