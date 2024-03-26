@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64FUNCTIONPROTOTYPEDISCOVERER_H
-#define LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64FUNCTIONPROTOTYPEDISCOVERER_H
+#ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64FUNCTIONPROTOTYPEDISCOVERER_H
+#define LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64FUNCTIONPROTOTYPEDISCOVERER_H
 
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/IR/Function.h"
@@ -41,7 +41,7 @@ private:
   LLVMContext &C;
 };
 
-} // end namespace mctoll
-} // end namespace llvm
+} // namespace mctoll
+} // namespace llvm
 
-#endif // LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64FUNCTIONPROTOTYPEDISCOVERER_H
+#endif // LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64FUNCTIONPROTOTYPEDISCOVERER_H

@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64MACHINEINSTRUCTIONRAISER_H
-#define LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64MACHINEINSTRUCTIONRAISER_H
+#ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONRAISER_H
+#define LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONRAISER_H
 
 #include "Raiser/MachineInstructionRaiser.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -24,16 +24,18 @@ namespace mctoll {
 class RISCV64MachineInstructionRaiser : public MachineInstructionRaiser {
 public:
   RISCV64MachineInstructionRaiser() = delete;
-  RISCV64MachineInstructionRaiser(MachineFunction &MF, const ModuleRaiser *MR, MCInstRaiser *MCIR);
+  RISCV64MachineInstructionRaiser(MachineFunction &MF, const ModuleRaiser *MR,
+                                  MCInstRaiser *MCIR);
 
   bool raise() override;
   FunctionType *getRaisedFunctionPrototype() override;
   int getArgumentNumber(unsigned PReg) override;
   Value *getRegOrArgValue(unsigned PReg, int MBBNo) override;
-  bool buildFuncArgTypeVector(const std::set<MCPhysReg> &, std::vector<Type *> &) override;
+  bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
+                              std::vector<Type *> &) override;
 };
 
-} // end namespace mctoll
-} // end namespace llvm
+} // namespace mctoll
+} // namespace llvm
 
-#endif // LLVM_TOOLS_LLVM_MCTOLL_RISCV64_RISCV64MACHINEINSTRUCTIONRAISER_H
+#endif // LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONRAISER_H

@@ -1,4 +1,4 @@
-//===-- RISCV64MachineInstructionRaiserUtils.cpp ----------------*- C++ -*-===//
+//===-- RISCV64MachineInstructionUtils.cpp ----------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,11 +7,11 @@
 //===----------------------------------------------------------------------===//
 //
 // This file contains the definition of multiple utility functions regarding
-// raising of machine instructions for use by llvm-mctoll.
+// machine instructions and machine basic blocks for use by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
 
-#include "RISCV64MachineInstructionRaiserUtils.h"
+#include "RISCV64MachineInstructionUtils.h"
 #include "MCTargetDesc/RISCVMCTargetDesc.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -29,12 +29,14 @@
 using namespace llvm;
 using namespace llvm::mctoll;
 
-IntegerType *riscv_utils::getDefaultIntType(MachineFunction &MF) {
+IntegerType *
+RISCV64MachineInstructionUtils::getDefaultIntType(MachineFunction &MF) {
   LLVMContext &C = MF.getFunction().getContext();
   return Type::getInt32Ty(C);
 }
 
-PointerType *riscv_utils::getDefaultPtrType(MachineFunction &MF) {
+PointerType *
+RISCV64MachineInstructionUtils::getDefaultPtrType(MachineFunction &MF) {
   LLVMContext &C = MF.getFunction().getContext();
   return Type::getInt32PtrTy(C);
 }
@@ -44,7 +46,8 @@ inline bool isAddInstruction(unsigned Op) {
          Op == RISCV::C_ADDI16SP;
 }
 
-bool riscv_utils::isPrologInstruction(const MachineInstr &MI) {
+bool RISCV64MachineInstructionUtils::isPrologInstruction(
+    const MachineInstr &MI) {
   // The following instructions are the prolog instructions we want to skip:
   // - adjusting stack pointer (build up stack)
   // - adjusting frame pointer
@@ -78,7 +81,8 @@ bool riscv_utils::isPrologInstruction(const MachineInstr &MI) {
          IsStoreReturnAddressInstruction(MI);
 }
 
-bool riscv_utils::isEpilogInstruction(const MachineInstr &MI) {
+bool RISCV64MachineInstructionUtils::isEpilogInstruction(
+    const MachineInstr &MI) {
   // The following instructions are the epilog instructions we want to skip:
   // - adjusting stack pointer (take down stack)
   // - loading the frame pointer
@@ -105,7 +109,7 @@ bool riscv_utils::isEpilogInstruction(const MachineInstr &MI) {
 }
 
 MachineBasicBlock::const_instr_iterator
-riscv_utils::skipProlog(const MachineBasicBlock &MBB) {
+RISCV64MachineInstructionUtils::skipProlog(const MachineBasicBlock &MBB) {
   auto It = MBB.instr_begin();
   while (It != MBB.instr_end() && isPrologInstruction(*It)) {
     ++It;
@@ -114,7 +118,7 @@ riscv_utils::skipProlog(const MachineBasicBlock &MBB) {
 }
 
 MachineBasicBlock::const_reverse_instr_iterator
-riscv_utils::findInstructionByOpcode(
+RISCV64MachineInstructionUtils::findInstructionByOpcode(
     const MachineBasicBlock &MBB, unsigned int Op,
     MachineBasicBlock::const_reverse_instr_iterator EndIt) {
   auto Pred = [&Op](const MachineInstr &MI) { return MI.getOpcode() == Op; };
@@ -122,7 +126,7 @@ riscv_utils::findInstructionByOpcode(
 }
 
 MachineBasicBlock::const_reverse_instr_iterator
-riscv_utils::findInstructionByRegNo(
+RISCV64MachineInstructionUtils::findInstructionByRegNo(
     const MachineBasicBlock &MBB, unsigned int RegNo,
     MachineBasicBlock::const_reverse_instr_iterator EndIt) {
   auto Pred = [&RegNo](const MachineInstr &MI) {

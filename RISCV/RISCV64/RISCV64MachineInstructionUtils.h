@@ -1,4 +1,4 @@
-//===-- RISCV64MachineInstructionRaiserUtils.h ------------------*- C++ -*-===//
+//===-- RISCV64MachineInstructionUtils.h ------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,12 +7,12 @@
 //===----------------------------------------------------------------------===//
 //
 // This file contains the declaration of multiple utility functions regarding
-// raising of machine instructions for use by llvm-mctoll.
+// machine instructions and machine basic blocks for use by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64MACHINEINSTRUCTIONRAISERUTILS_H
-#define LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64MACHINEINSTRUCTIONRAISERUTILS_H
+#ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONUTILS_H
+#define LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONUTILS_H
 
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -21,7 +21,7 @@
 
 namespace llvm {
 namespace mctoll {
-namespace riscv_utils {
+namespace RISCV64MachineInstructionUtils {
 
 /// Gets the default integer type.
 IntegerType *getDefaultIntType(MachineFunction &MF);
@@ -49,8 +49,8 @@ MachineBasicBlock::const_reverse_instr_iterator
 findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned RegNO,
                        MachineBasicBlock::const_reverse_instr_iterator EndIt);
 
-} // end namespace riscv_utils
-} // end namespace mctoll
-} // end namespace llvm
+} // namespace RISCV64MachineInstructionUtils
+} // namespace mctoll
+} // namespace llvm
 
-#endif // LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64MACHINEINSTRUCTIONRAISERUTILS_H
+#endif // LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONUTILS_H

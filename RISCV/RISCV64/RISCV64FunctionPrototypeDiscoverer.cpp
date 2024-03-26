@@ -13,7 +13,7 @@
 
 #include "RISCV64FunctionPrototypeDiscoverer.h"
 #include "MCTargetDesc/RISCVMCTargetDesc.h"
-#include "RISCV64MachineInstructionRaiserUtils.h"
+#include "RISCV64MachineInstructionUtils.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
@@ -21,7 +21,7 @@
 
 using namespace llvm;
 using namespace llvm::mctoll;
-using namespace llvm::mctoll::riscv_utils;
+using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
 
 Function *
 RISCV64FunctionPrototypeDiscoverer::discoverFunctionPrototype() const {
