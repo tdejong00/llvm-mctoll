@@ -11,14 +11,15 @@ endif()
 
 add_llvm_component_library(mctollRISCVRaiser
   RISCVModuleRaiser.cpp
-  RISCV32ModuleRaiser.cpp
-  RISCV32MachineInstructionRaiser.cpp
-  RISCV64MachineInstructionRaiser.cpp
-  RISCV64ModuleRaiser.cpp
   RISCVCallingConvention.cpp
-
-  RISCV64FunctionPrototypeDiscoverer.cpp
-  RISCV64MachineInstructionRaiserUtils.cpp
+  
+  RISCV32/RISCV32ModuleRaiser.cpp
+  RISCV32/RISCV32MachineInstructionRaiser.cpp
+  
+  RISCV64/RISCV64MachineInstructionRaiser.cpp
+  RISCV64/RISCV64ModuleRaiser.cpp
+  RISCV64/RISCV64FunctionPrototypeDiscoverer.cpp
+  RISCV64/RISCV64MachineInstructionRaiserUtils.cpp
 
   DEPENDS
     ${LLVM_MCTOLL_DEPS}
