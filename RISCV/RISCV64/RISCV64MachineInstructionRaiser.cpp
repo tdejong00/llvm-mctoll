@@ -53,7 +53,6 @@
 #include "llvm/IR/Value.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Object/SymbolicFile.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -71,38 +70,27 @@ using namespace llvm;
 using namespace llvm::mctoll;
 using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
 
-#define GRAY_COLOR "\033[90m"
-#define GREEN_COLOR "\033[32m"
-#define RED_COLOR "\033[31m"
-#define RESET_COLOR "\033[0;39m"
+#define ENABLE_RAISING_DEBUG_INFO
 
-#define SHOW_INSTRUCTION_RAISING_DEBUG_RESULTS
-
-/// Prints a success message for the machine instruction, if debug is enabled.
-inline void printSuccess(const MachineInstr &MI) {
-#ifdef SHOW_INSTRUCTION_RAISING_DEBUG_RESULTS
-  LLVM_DEBUG(dbgs() << GREEN_COLOR << "Success: ");
-  LLVM_DEBUG(MI.print(dbgs()));
-  LLVM_DEBUG(dbgs() << RESET_COLOR);
+/// Prints a result message for the machine instruction with an optional message
+void printResult(const MachineInstr &MI, std::string Result,
+                 std::string Reason = "") {
+#ifdef ENABLE_RAISING_DEBUG_INFO
+  LLVM_DEBUG(
+      dbgs() << Result << ": "; MI.print(dbgs(), true, false, false, false);
+      dbgs() << "\033[0;39m";
+      if (!Reason.empty()) { dbgs() << ": " << Reason; } dbgs() << "\n";);
 #endif
 }
 
-/// Prints a failure message for the machine instruction, if debug is enabled.
-inline void printFailure(const MachineInstr &MI, std::string Message) {
-#ifdef SHOW_INSTRUCTION_RAISING_DEBUG_RESULTS
-  LLVM_DEBUG(dbgs() << RED_COLOR << "Failure: ");
-  LLVM_DEBUG(MI.print(dbgs(), true, false, false, false));
-  LLVM_DEBUG(dbgs() << RESET_COLOR << ": " << Message << "\n");
-#endif
+void printSuccess(const MachineInstr &MI, std::string Reason = "") {
+  printResult(MI, "\033[32mSuccess", Reason);
 }
-
-/// Prints a skipped message for the machine instruction, if debug is enabled.
-inline void printSkipped(const MachineInstr &MI) {
-#ifdef SHOW_INSTRUCTION_RAISING_DEBUG_RESULTS
-  LLVM_DEBUG(dbgs() << GRAY_COLOR << "Skipped: ");
-  LLVM_DEBUG(MI.print(dbgs()));
-  LLVM_DEBUG(dbgs() << RESET_COLOR);
-#endif
+void printFailure(const MachineInstr &MI, std::string Reason = "") {
+  printResult(MI, "\033[31mFailure", Reason);
+}
+void printSkipped(const MachineInstr &MI, std::string Reason = "") {
+  printResult(MI, "\033[90mSkipped", Reason);
 }
 
 // NOTE : The following RISCV64ModuleRaiser class function is defined here as
@@ -248,6 +236,12 @@ bool RISCV64MachineInstructionRaiser::raiseAddInstruction(
 
   assert(MOp1.isReg() && MOp2.isReg() && (MOp3.isReg() || MOp3.isImm()));
 
+  // Load value at stack offset
+  if (MOp2.getReg() == RISCV::X8 && MOp3.isImm()) {
+    RegisterValues[MOp1.getReg()] = StackValues[MOp3.getImm()];
+    return true;
+  }
+
   Value *LHS = getRegOrArgValue(MOp2.getReg());
   if (LHS == nullptr) {
     printFailure(MI, "LHS value of add instruction not set");
@@ -307,26 +301,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   }
   // Load value from address specified in register
   else if (MOp3.getImm() == 0) {
-    Value *Val = RegisterValues[MOp2.getReg()];
-    if (Val == nullptr) {
-      printFailure(MI, "Register value of load instruction not set");
-      return false;
-    }
-
-    // Determine what type of value/instruction is being "loaded" from
-    if (isa<LoadInst>(Val)) {
-      LoadInst *Instruction = dyn_cast<LoadInst>(Val);
-      Ptr = Instruction->getPointerOperand();
-    } else if (isa<GlobalVariable>(Val)) {
-      RegisterValues[MOp1.getReg()] =
-          Builder.CreatePtrToInt(Val, getDefaultIntType(C));
-      return true;
-    } else {
-      printFailure(MI, "Not implemented load instruction type");
-      return true;
-    }
-  } else {
-    // TODO: support other addressing modes
+    Ptr = getRegOrArgValue(MOp2.getReg());
   }
 
   if (Ptr == nullptr) {
@@ -334,29 +309,9 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
     return false;
   }
 
-  // Determine type for load instruction
-  Type *Ty;
-  switch (MI.getOpcode()) {
-  case RISCV::LB:
-  case RISCV::LBU:
-    Ty = Type::getInt8Ty(C);
-    break;
-  case RISCV::LH:
-  case RISCV::LHU:
-    Ty = Type::getInt16Ty(C);
-    break;
-  case RISCV::LW:
-  case RISCV::LWU:
-  case RISCV::C_LW:
-    Ty = Type::getInt32Ty(C);
-    break;
-  case RISCV::LD:
-  case RISCV::C_LD:
-    Ty = Type::getInt64Ty(C);
-    break;
-  default:
-    Ty = getDefaultIntType(C);
-    break;
+  Type *Ty = getDefaultIntType(C);
+  if (MI.getOpcode() == RISCV::LD || MI.getOpcode() == RISCV::C_LD) {
+    Ty = getDefaultPtrType(C);
   }
 
   RegisterValues[MOp1.getReg()] = Builder.CreateLoad(Ty, Ptr);
@@ -369,6 +324,7 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
+  const MachineOperand &MOp2 = MI.getOperand(1);
   const MachineOperand &MOp3 = MI.getOperand(2);
 
   assert(MOp1.isReg() && MOp3.isImm());
@@ -380,29 +336,23 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
     return false;
   }
 
-  // Determine type for store instruction
-  Type *Ty = nullptr;
-  switch (MI.getOpcode()) {
-  case RISCV::SB:
-    Ty = Type::getInt8Ty(C);
-    break;
-  case RISCV::SH:
-    Ty = Type::getInt16Ty(C);
-    break;
-  case RISCV::SW:
-    Ty = Type::getInt32Ty(C);
-    break;
-  case RISCV::SD:
-    Ty = Type::getInt64Ty(C);
-    break;
-  default:
-    Ty = getDefaultIntType(C);
-    break;
+  Type *Ty = getDefaultIntType(C);
+  if (MI.getOpcode() == RISCV::SD || MI.getOpcode() == RISCV::C_SD) {
+    Ty = getDefaultPtrType(C);
   }
 
-  AllocaInst *Ptr = Builder.CreateAlloca(Ty);
+  Value *Ptr = nullptr;
+  if (MOp2.getReg() == RISCV::X8) {
+    Ptr = Builder.CreateAlloca(Ty);
+    StackValues[MOp3.getImm()] = Ptr;
+  } else if (MOp3.getImm() == 0) {
+    Ptr = getRegOrArgValue(MOp2.getReg());
+  }
 
-  StackValues[MOp3.getImm()] = Ptr;
+  if (Ptr == nullptr) {
+    printFailure(MI, "Pointer of store instruction not set");
+    return false;
+  }
 
   Builder.CreateStore(Val, Ptr);
 
@@ -451,6 +401,9 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
 
     // Found in .data, create ptrtoint instruction
     RegisterValues[MOp1.getReg()] = GlobalVar;
+  } else {
+    printFailure(MI, "Not yet implemented AUIPC instruction");
+    return false;
   }
 
   return true;

@@ -73,6 +73,8 @@ RISCV64MachineInstructionUtils::getInstructionType(const MachineInstr &MI) {
   case RISCV::SH:
   case RISCV::SW:
   case RISCV::SD:
+  case RISCV::C_SW:
+  case RISCV::C_SD:
     return InstructionType::STORE;
   case RISCV::AUIPC:
     return InstructionType::GLOBAL;
