@@ -15,18 +15,38 @@
 #define LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONUTILS_H
 
 #include "llvm/CodeGen/MachineBasicBlock.h"
-#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
 
 namespace llvm {
 namespace mctoll {
+
+/// Contains utility functions regarding machine instructions and finding
+/// machine instructions within basic blocks.
 namespace RISCV64MachineInstructionUtils {
 
+enum InstructionType {
+  NOP,
+  ADD,
+  ADDI,
+  MOVE,
+  LOAD,
+  STORE,
+  GLOBAL,
+  CALL,
+  RETURN,
+  UNKNOWN
+};
+
 /// Gets the default integer type.
-IntegerType *getDefaultIntType(MachineFunction &MF);
+IntegerType *getDefaultIntType(LLVMContext &C);
 /// Gets the default pointer type.
-PointerType *getDefaultPtrType(MachineFunction &MF);
+PointerType *getDefaultPtrType(LLVMContext &C);
+
+/// Determines the type of the machine instruction, which determines
+/// how the instruction will be raised.
+InstructionType getInstructionType(const MachineInstr &MI);
 
 /// Determines whether the machine instruction is a part of the prolog.
 bool isPrologInstruction(const MachineInstr &MI);

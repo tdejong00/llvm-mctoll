@@ -15,6 +15,7 @@
 #include "MCTargetDesc/RISCVMCTargetDesc.h"
 #include "RISCV64MachineInstructionUtils.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
+#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/IR/CallingConv.h"
@@ -63,16 +64,26 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
       const MachineOperand &MOp = DefineIt->getOperand(1);
       if (MOp.isReg()) {
         for (; DefineIt != MBB.instr_rend(); ++DefineIt) {
+          const MachineInstr *Prev = DefineIt->getPrevNode();
+          const MachineInstr *Next = DefineIt->getNextNode();
+          if (!Prev || !Next) {
+            continue;
+          }
+
+          // Check for auipc instruction, which is not loaded from,
+          // so an add instruction which is preceeded by an auipc, but
+          // not subceeded by a load instruction
           if (DefineIt->definesRegister(MOp.getReg()) &&
-              DefineIt->getOpcode() == RISCV::ADDI &&
-              DefineIt->getPrevNode()->getOpcode() == RISCV::AUIPC) {
-            return getDefaultPtrType(MF);
+              Prev->getOpcode() == RISCV::AUIPC &&
+              getInstructionType(*DefineIt) == InstructionType::ADDI &&
+              getInstructionType(*Next) != InstructionType::LOAD) {
+            return getDefaultPtrType(C);
           }
         }
       }
 
       // Assume integer return type
-      return getDefaultIntType(MF);
+      return getDefaultIntType(C);
     }
   }
 
@@ -98,13 +109,13 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
         // Parameter register is moved to local register
         if (It->getOpcode() == RISCV::C_MV && MOp2.isReg() &&
             MOp2.getReg() == RegNo) {
-          ArgumentTypes.push_back(getDefaultIntType(MF));
+          ArgumentTypes.push_back(getDefaultIntType(C));
         }
         // Parameter register is stored on stack, could be a pointer
         // TODO: this assumption is most likely not sound
         else if (It->getOpcode() == RISCV::SD && MOp1.isReg() &&
                  MOp1.getReg() == RegNo) {
-          ArgumentTypes.push_back(getDefaultPtrType(MF));
+          ArgumentTypes.push_back(getDefaultPtrType(C));
         }
       }
       ++It;

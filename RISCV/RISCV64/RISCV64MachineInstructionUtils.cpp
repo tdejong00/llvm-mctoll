@@ -14,7 +14,6 @@
 #include "RISCV64MachineInstructionUtils.h"
 #include "MCTargetDesc/RISCVMCTargetDesc.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
-#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/IR/DataLayout.h"
@@ -28,22 +27,62 @@
 
 using namespace llvm;
 using namespace llvm::mctoll;
+using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
 
 IntegerType *
-RISCV64MachineInstructionUtils::getDefaultIntType(MachineFunction &MF) {
-  LLVMContext &C = MF.getFunction().getContext();
+RISCV64MachineInstructionUtils::getDefaultIntType(LLVMContext &C) {
   return Type::getInt32Ty(C);
 }
 
 PointerType *
-RISCV64MachineInstructionUtils::getDefaultPtrType(MachineFunction &MF) {
-  LLVMContext &C = MF.getFunction().getContext();
+RISCV64MachineInstructionUtils::getDefaultPtrType(LLVMContext &C) {
   return Type::getInt32PtrTy(C);
 }
 
-inline bool isAddInstruction(unsigned Op) {
-  return Op == RISCV::C_ADDI || Op == RISCV::C_ADDI4SPN ||
-         Op == RISCV::C_ADDI16SP;
+InstructionType
+RISCV64MachineInstructionUtils::getInstructionType(const MachineInstr &MI) {
+  switch (MI.getOpcode()) {
+  case RISCV::C_NOP:
+    return InstructionType::NOP;
+  case RISCV::ADD:
+  case RISCV::ADDW:
+  case RISCV::C_ADD:
+  case RISCV::C_ADDW:
+    return InstructionType::ADD;
+  case RISCV::ADDI:
+  case RISCV::ADDIW:
+  case RISCV::C_ADDI:
+  case RISCV::C_ADDIW:
+  case RISCV::C_ADDI4SPN:
+  case RISCV::C_ADDI16SP:
+    return InstructionType::ADDI;
+  case RISCV::C_LI:
+  case RISCV::C_MV:
+    return InstructionType::MOVE;
+  case RISCV::LB:
+  case RISCV::LBU:
+  case RISCV::LH:
+  case RISCV::LHU:
+  case RISCV::LW:
+  case RISCV::LWU:
+  case RISCV::LD:
+  case RISCV::C_LW:
+  case RISCV::C_LD:
+    return InstructionType::LOAD;
+  case RISCV::SB:
+  case RISCV::SH:
+  case RISCV::SW:
+  case RISCV::SD:
+    return InstructionType::STORE;
+  case RISCV::AUIPC:
+    return InstructionType::GLOBAL;
+  case RISCV::JAL:
+    return InstructionType::CALL;
+  case RISCV::C_JR:
+    return InstructionType::RETURN;
+  default:
+    return InstructionType::UNKNOWN;
+  }
 }
 
 bool RISCV64MachineInstructionUtils::isPrologInstruction(
@@ -53,15 +92,14 @@ bool RISCV64MachineInstructionUtils::isPrologInstruction(
   // - adjusting frame pointer
   // - storing stack pointer
   // - storing return address
-
   auto IsAdjustStackPointerInstruction = [](const MachineInstr &MI) {
-    return isAddInstruction(MI.getOpcode()) && MI.getOperand(0).isReg() &&
+    return getInstructionType(MI) == ADDI && MI.getOperand(0).isReg() &&
            MI.getOperand(0).getReg() == RISCV::X2 && MI.getOperand(1).isReg() &&
            MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm() &&
            MI.getOperand(2).getImm() < 0;
   };
   auto IsAdjustFramePointerInstruction = [](const MachineInstr &MI) {
-    return isAddInstruction(MI.getOpcode()) && MI.getOperand(0).isReg() &&
+    return getInstructionType(MI) == ADDI && MI.getOperand(0).isReg() &&
            MI.getOperand(0).getReg() == RISCV::X8 && MI.getOperand(1).isReg() &&
            MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm();
   };
@@ -88,7 +126,7 @@ bool RISCV64MachineInstructionUtils::isEpilogInstruction(
   // - loading the frame pointer
   // - loading the return address
   auto IsAdjustStackPointerInstruction = [](const MachineInstr &MI) {
-    return isAddInstruction(MI.getOpcode()) && MI.getOperand(0).isReg() &&
+    return getInstructionType(MI) == ADDI && MI.getOperand(0).isReg() &&
            MI.getOperand(0).getReg() == RISCV::X2 && MI.getOperand(1).isReg() &&
            MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm() &&
            MI.getOperand(2).getImm() > 0;
