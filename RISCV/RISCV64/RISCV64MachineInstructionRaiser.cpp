@@ -12,9 +12,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "RISCV64MachineInstructionRaiser.h"
+#include "MCInstRaiser.h"
+#include "MCTargetDesc/RISCVAsmBackend.h"
+#include "MCTargetDesc/RISCVMCTargetDesc.h"
+#include "ModuleRaiser.h"
 #include "RISCV64FunctionPrototypeDiscoverer.h"
+#include "RISCV64MachineInstructionUtils.h"
+#include "RISCVELFUtils.h"
 #include "RISCVModuleRaiser.h"
 #include "Raiser/MachineFunctionRaiser.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/Analysis/LoopInfo.h"
+#include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/LoopTraversal.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -22,21 +32,78 @@
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
+#include "llvm/CodeGen/PseudoSourceValue.h"
+#include "llvm/CodeGen/Register.h"
 #include "llvm/CodeGen/RegisterPressure.h"
+#include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/Support/Debug.h"
+#include "llvm/IR/Metadata.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
+#include "llvm/MC/MCInst.h"
+#include "llvm/Object/SymbolicFile.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include <cassert>
+#include <cstdint>
+#include <netinet/in.h>
+#include <string>
+#include <sys/types.h>
+#include <vector>
+#include <zconf.h>
 
 #define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
 using namespace llvm::mctoll;
+using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
+
+#define GRAY_COLOR "\033[90m"
+#define GREEN_COLOR "\033[32m"
+#define RED_COLOR "\033[31m"
+#define RESET_COLOR "\033[0;39m"
+
+#define SHOW_INSTRUCTION_RAISING_DEBUG_RESULTS
+
+/// Prints a success message for the machine instruction, if debug is enabled.
+inline void printSuccess(const MachineInstr &MI) {
+#ifdef SHOW_INSTRUCTION_RAISING_DEBUG_RESULTS
+  LLVM_DEBUG(dbgs() << GREEN_COLOR << "Success: ");
+  LLVM_DEBUG(MI.print(dbgs()));
+  LLVM_DEBUG(dbgs() << RESET_COLOR);
+#endif
+}
+
+/// Prints a failure message for the machine instruction, if debug is enabled.
+inline void printFailure(const MachineInstr &MI, std::string Message) {
+#ifdef SHOW_INSTRUCTION_RAISING_DEBUG_RESULTS
+  LLVM_DEBUG(dbgs() << RED_COLOR << "Failure: ");
+  LLVM_DEBUG(MI.print(dbgs(), true, false, false, false));
+  LLVM_DEBUG(dbgs() << RESET_COLOR << ": " << Message << "\n");
+#endif
+}
+
+/// Prints a skipped message for the machine instruction, if debug is enabled.
+inline void printSkipped(const MachineInstr &MI) {
+#ifdef SHOW_INSTRUCTION_RAISING_DEBUG_RESULTS
+  LLVM_DEBUG(dbgs() << GRAY_COLOR << "Skipped: ");
+  LLVM_DEBUG(MI.print(dbgs()));
+  LLVM_DEBUG(dbgs() << RESET_COLOR);
+#endif
+}
 
 // NOTE : The following RISCV64ModuleRaiser class function is defined here as
 // they reference MachineFunctionRaiser class that has a forward declaration
@@ -59,32 +126,425 @@ MachineFunctionRaiser *RISCV64ModuleRaiser::CreateAndAddMachineFunctionRaiser(
 
 RISCV64MachineInstructionRaiser::RISCV64MachineInstructionRaiser(
     MachineFunction &MF, const ModuleRaiser *MR, MCInstRaiser *MCIR)
-    : MachineInstructionRaiser(MF, MR, MCIR) {}
+    : MachineInstructionRaiser(MF, MR, MCIR), C(MF.getFunction().getContext()),
+      MCIR(MCIR), FunctionPrototypeDiscoverer(MF), ELFUtils(MR, C) {
+  // Initialize hardwired zero register
+  RegisterValues[RISCV::X0] = ConstantInt::get(getDefaultIntType(C), 0);
+}
 
-bool RISCV64MachineInstructionRaiser::raise() { 
-  errs() << "Not yet implemented: RISCV64MachineInstructionRaiser::raise\n";
-  return false; 
+bool RISCV64MachineInstructionRaiser::raise() {
+  LoopTraversal Traversal;
+  LoopTraversal::TraversalOrder TraversalOrder = Traversal.traverse(MF);
+
+  // Traverse basic blocks of machine function in LoopTraversal order
+  for (LoopTraversal::TraversedMBBInfo MBBInfo : TraversalOrder) {
+    MachineBasicBlock *MBB = MBBInfo.MBB;
+
+    // Determine name of basic block
+    std::string BBName = "entry";
+    if (MBB->getNumber() > 0) {
+      BBName = "bb." + std::to_string(MBB->getNumber());
+    }
+
+    // Create basic block
+    BasicBlock *BB = BasicBlock::Create(C, BBName, RaisedFunction);
+
+    // Loop over machine instructions of basic block and raise each instruction.
+    for (const MachineInstr &MI : MBB->instrs()) {
+      bool WasAUIPC = MI.getPrevNode() != nullptr &&
+                      MI.getPrevNode()->getOpcode() == RISCV::AUIPC;
+
+      // The instruction after an AUIPC is already handled during raising of
+      // the AUIPC instrucion. Also skip prolog and epilog instructions, as
+      // these do not contain any required information.
+      if (WasAUIPC || isPrologInstruction(MI) || isEpilogInstruction(MI)) {
+        printSkipped(MI);
+        continue;
+      }
+
+      if (raiseMachineInstruction(MI, BB)) {
+        printSuccess(MI);
+      }
+    }
+  }
+
+  LLVM_DEBUG(dbgs() << "\n"; RaisedFunction->dump());
+
+  return true;
 }
 
 FunctionType *RISCV64MachineInstructionRaiser::getRaisedFunctionPrototype() {
-  RISCV64FunctionPrototypeDiscoverer FPD(MF);
-  
-  RaisedFunction = FPD.discoverFunctionPrototype();
-
+  RaisedFunction = FunctionPrototypeDiscoverer.discoverFunctionPrototype();
   return RaisedFunction->getFunctionType();
 }
 
 int RISCV64MachineInstructionRaiser::getArgumentNumber(unsigned PReg) {
-  errs() << "Not yet implemented: RISCV64MachineInstructionRaiser::getArgumentNumber\n";
-  return 0;
+  unsigned ArgReg = PReg - RISCV::X10;
+  if (ArgReg < 8) {
+    return ArgReg;
+  }
+  return -1;
 }
 
-Value *RISCV64MachineInstructionRaiser::getRegOrArgValue(unsigned PReg, int MBBNo) {
-  errs() << "Not yet implemented: RISCV64MachineInstructionRaiser::getRegOrArgValue\n";
-  return nullptr;
+Value *RISCV64MachineInstructionRaiser::getRegOrArgValue(unsigned PReg,
+                                                         int MBBNo = 0) {
+  Value *Val = RegisterValues[PReg];
+
+  int ArgNo = getArgumentNumber(PReg);
+  int NumArgs = RaisedFunction->getFunctionType()->getNumParams();
+
+  // Attempt to get value from function arguments
+  if (Val == nullptr && ArgNo >= 0 && ArgNo < NumArgs) {
+    Val = RaisedFunction->getArg(ArgNo);
+  }
+
+  return Val;
 }
 
-bool RISCV64MachineInstructionRaiser::buildFuncArgTypeVector(const std::set<MCPhysReg> &, std::vector<Type *> &) {
-  errs() << "Not yet implemented: RISCV64MachineInstructionRaiser::buildFuncArgTypeVector\n";
-  return false;
+Value *
+RISCV64MachineInstructionRaiser::getRegOrImmValue(const MachineOperand &MOp) {
+  assert(MOp.isReg() || MOp.isImm());
+
+  if (MOp.isReg()) {
+    return getRegOrArgValue(MOp.getReg());
+  }
+
+  return ConstantInt::get(getDefaultIntType(C), MOp.getImm());
+}
+
+bool RISCV64MachineInstructionRaiser::raiseMachineInstruction(
+    const MachineInstr &MI, BasicBlock *BB) {
+  switch (getInstructionType(MI)) {
+  case InstructionType::NOP:
+    return true;
+  case InstructionType::ADD:
+  case InstructionType::ADDI:
+    return raiseAddInstruction(MI, BB);
+  case InstructionType::MOVE:
+    return raiseMoveInstruction(MI, BB);
+  case InstructionType::LOAD:
+    return raiseLoadInstruction(MI, BB);
+  case InstructionType::STORE:
+    return raiseStoreInstruction(MI, BB);
+  case InstructionType::GLOBAL:
+    return raiseGlobalInstruction(MI, BB);
+  case InstructionType::CALL:
+    return raiseCallInstruction(MI, BB);
+  case InstructionType::RETURN:
+    return raiseReturnInstruction(MI, BB);
+  default:
+    printFailure(MI, "Unimplemented or unknown instruction");
+    return false;
+  }
+}
+
+bool RISCV64MachineInstructionRaiser::raiseAddInstruction(
+    const MachineInstr &MI, BasicBlock *BB) {
+  IRBuilder<> Builder(BB);
+
+  const MachineOperand &MOp1 = MI.getOperand(0);
+  const MachineOperand &MOp2 = MI.getOperand(1);
+  const MachineOperand &MOp3 = MI.getOperand(2);
+
+  assert(MOp1.isReg() && MOp2.isReg() && (MOp3.isReg() || MOp3.isImm()));
+
+  Value *LHS = getRegOrArgValue(MOp2.getReg());
+  if (LHS == nullptr) {
+    printFailure(MI, "LHS value of add instruction not set");
+    return false;
+  }
+
+  Value *RHS = getRegOrImmValue(MOp3);
+  if (RHS == nullptr) {
+    printFailure(MI, "RHS value of add instruction not set");
+    return false;
+  }
+
+  RegisterValues[MOp1.getReg()] = Builder.CreateAdd(LHS, RHS);
+
+  return true;
+}
+
+bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
+    const MachineInstr &MI, BasicBlock *BB) {
+  IRBuilder<> Builder(BB);
+
+  const MachineOperand &MOp1 = MI.getOperand(0);
+  const MachineOperand &MOp2 = MI.getOperand(1);
+
+  assert(MOp1.isReg() && (MOp2.isReg() || MOp2.isImm()));
+
+  Value *Val = getRegOrImmValue(MOp2);
+  if (Val == nullptr) {
+    printFailure(MI, "Register value of move instruction not set");
+    return false;
+  }
+
+  RegisterValues[MOp1.getReg()] = Val;
+
+  return true;
+}
+
+bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
+    const MachineInstr &MI, BasicBlock *BB) {
+  IRBuilder<> Builder(BB);
+
+  const MachineOperand &MOp1 = MI.getOperand(0);
+  const MachineOperand &MOp2 = MI.getOperand(1);
+  const MachineOperand &MOp3 = MI.getOperand(2);
+
+  assert(MOp1.isReg() && MOp2.isReg() && MOp3.isImm());
+
+  Value *Ptr = nullptr;
+
+  // Load from stack
+  if (MOp2.getReg() == RISCV::X8) {
+    Ptr = StackValues[MOp3.getImm()];
+    if (Ptr == nullptr) {
+      printFailure(MI, "Stack value of load instruction not set");
+      return false;
+    }
+  }
+  // Load value from address specified in register
+  else if (MOp3.getImm() == 0) {
+    Value *Val = RegisterValues[MOp2.getReg()];
+    if (Val == nullptr) {
+      printFailure(MI, "Register value of load instruction not set");
+      return false;
+    }
+
+    // Determine what type of value/instruction is being "loaded" from
+    if (isa<LoadInst>(Val)) {
+      LoadInst *Instruction = dyn_cast<LoadInst>(Val);
+      Ptr = Instruction->getPointerOperand();
+    } else if (isa<GlobalVariable>(Val)) {
+      RegisterValues[MOp1.getReg()] =
+          Builder.CreatePtrToInt(Val, getDefaultIntType(C));
+      return true;
+    } else {
+      printFailure(MI, "Not implemented load instruction type");
+      return true;
+    }
+  } else {
+    // TODO: support other addressing modes
+  }
+
+  if (Ptr == nullptr) {
+    printFailure(MI, "Pointer of load instruction not set");
+    return false;
+  }
+
+  // Determine type for load instruction
+  Type *Ty;
+  switch (MI.getOpcode()) {
+  case RISCV::LB:
+  case RISCV::LBU:
+    Ty = Type::getInt8Ty(C);
+    break;
+  case RISCV::LH:
+  case RISCV::LHU:
+    Ty = Type::getInt16Ty(C);
+    break;
+  case RISCV::LW:
+  case RISCV::LWU:
+  case RISCV::C_LW:
+    Ty = Type::getInt32Ty(C);
+    break;
+  case RISCV::LD:
+  case RISCV::C_LD:
+    Ty = Type::getInt64Ty(C);
+    break;
+  default:
+    Ty = getDefaultIntType(C);
+    break;
+  }
+
+  RegisterValues[MOp1.getReg()] = Builder.CreateLoad(Ty, Ptr);
+
+  return true;
+}
+
+bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
+    const MachineInstr &MI, BasicBlock *BB) {
+  IRBuilder<> Builder(BB);
+
+  const MachineOperand &MOp1 = MI.getOperand(0);
+  const MachineOperand &MOp3 = MI.getOperand(2);
+
+  assert(MOp1.isReg() && MOp3.isImm());
+
+  Value *Val = getRegOrArgValue(MOp1.getReg());
+
+  if (Val == nullptr) {
+    printFailure(MI, "Register value of store instruction not set");
+    return false;
+  }
+
+  // Determine type for store instruction
+  Type *Ty = nullptr;
+  switch (MI.getOpcode()) {
+  case RISCV::SB:
+    Ty = Type::getInt8Ty(C);
+    break;
+  case RISCV::SH:
+    Ty = Type::getInt16Ty(C);
+    break;
+  case RISCV::SW:
+    Ty = Type::getInt32Ty(C);
+    break;
+  case RISCV::SD:
+    Ty = Type::getInt64Ty(C);
+    break;
+  default:
+    Ty = getDefaultIntType(C);
+    break;
+  }
+
+  AllocaInst *Ptr = Builder.CreateAlloca(Ty);
+
+  StackValues[MOp3.getImm()] = Ptr;
+
+  Builder.CreateStore(Val, Ptr);
+
+  return true;
+}
+
+bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
+    const MachineInstr &MI, BasicBlock *BB) {
+  IRBuilder<> Builder(BB);
+
+  const MachineInstr *NextMI = MI.getNextNode();
+
+  if (NextMI->getOpcode() == RISCV::ADDI) {
+    const MachineOperand &MOp1 = NextMI->getOperand(0);
+    const MachineOperand &MOp3 = NextMI->getOperand(2);
+
+    assert(MOp1.isReg() && MOp3.isImm());
+
+    uint64_t InstOffset = MCIR->getMCInstIndex(MI);
+    uint64_t TextOffset = MR->getTextSectionAddress();
+    int64_t ValueOffset = MOp3.getImm();
+
+    // First attempt .rodata
+    uint64_t RODataOffset = InstOffset + TextOffset + ValueOffset;
+    Value *LowerBound = ConstantInt::get(Type::getInt32Ty(C), 0);
+    Value *UpperBound = nullptr;
+    GlobalVariable *GlobalVar =
+        ELFUtils.getRODataValueAtOffset(RODataOffset, UpperBound);
+
+    // Found in .rodata, create getelementptr instruction
+    if (GlobalVar != nullptr) {
+      RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(
+          GlobalVar->getValueType(), GlobalVar, {LowerBound, UpperBound});
+      return true;
+    }
+
+    // If not at .rodata, attempt .data
+    // TODO: 0x2000 is most likely not correct, but it works?
+    uint64_t DataOffset = InstOffset + TextOffset + ValueOffset + 0x2000;
+    GlobalVar = ELFUtils.getDataValueAtOffset(DataOffset);
+
+    if (GlobalVar == nullptr) {
+      printFailure(MI, "Global value not found");
+      return false;
+    }
+
+    // Found in .data, create ptrtoint instruction
+    RegisterValues[MOp1.getReg()] = GlobalVar;
+  }
+
+  return true;
+}
+
+bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
+    const MachineInstr &MI, BasicBlock *BB) {
+  IRBuilder<> Builder(BB);
+
+  Function *CalledFunction = getCalledFunction(MI);
+
+  if (CalledFunction == nullptr) {
+    printFailure(MI, "Called function of call instruction not found");
+    return false;
+  }
+
+  FunctionType *CalledFunctionType = CalledFunction->getFunctionType();
+
+  // Construct arguments vector based on argument registers
+  std::vector<Value *> Args;
+  if (CalledFunctionType->isVarArg() ||
+      CalledFunctionType->getNumParams() > 0) {
+    for (unsigned ArgReg = RISCV::X10; ArgReg < RISCV::X17; ArgReg++) {
+      Value *RegVal = RegisterValues[ArgReg];
+      if (RegVal == nullptr) {
+        break;
+      }
+      Args.push_back(RegVal);
+    }
+  }
+
+  // Check if enough arguments are passed
+  if (!CalledFunctionType->isVarArg() &&
+      Args.size() != CalledFunctionType->getNumParams()) {
+    printFailure(MI, "Not enough arguments passed to called function");
+    return false;
+  }
+
+  // Check if arguments are of correct type
+  for (unsigned I = 0; I < CalledFunctionType->getNumParams(); I++) {
+    if (Args[I]->getType() != CalledFunctionType->getParamType(I)) {
+      printFailure(MI, "Argument type of argument '" + std::to_string(I) +
+                           "' does not match prototype");
+      return false;
+    }
+  }
+
+  RegisterValues[RISCV::X10] = Builder.CreateCall(CalledFunction, Args);
+
+  return true;
+}
+
+bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
+    const MachineInstr &MI, BasicBlock *BB) {
+  IRBuilder<> Builder(BB);
+
+  Type *RetTy = BB->getParent()->getReturnType();
+
+  if (RetTy->isVoidTy()) {
+    Builder.CreateRetVoid();
+  } else {
+    Value *RetVal = RegisterValues[RISCV::X10];
+
+    if (RetVal == nullptr) {
+      printFailure(MI, "Register value of return instruction not set");
+      return false;
+    }
+
+    Builder.CreateRet(RetVal);
+  }
+
+  return true;
+}
+
+Function *RISCV64MachineInstructionRaiser::getCalledFunction(
+    const MachineInstr &MI) const {
+  const MachineOperand &MOp2 = MI.getOperand(1);
+
+  assert(MOp2.isImm());
+
+  Function *CalledFunction = nullptr;
+
+  // Calculate offset of function
+  uint64_t InstructionOffset = MCIR->getMCInstIndex(MI);
+  int64_t TextSectionOffset = MR->getTextSectionAddress();
+  uint64_t Offset = InstructionOffset + MOp2.getImm() + TextSectionOffset;
+
+  // First check if function is part of executable
+  CalledFunction = MR->getRaisedFunctionAt(Offset);
+
+  // If not, use PLT section
+  if (CalledFunction == nullptr) {
+    CalledFunction = ELFUtils.getFunctionAtOffset(Offset);
+  }
+
+  return CalledFunction;
 }
