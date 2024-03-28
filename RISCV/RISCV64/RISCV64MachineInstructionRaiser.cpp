@@ -202,12 +202,22 @@ RISCV64MachineInstructionRaiser::getRegOrImmValue(const MachineOperand &MOp) {
 
 bool RISCV64MachineInstructionRaiser::raiseMachineInstruction(
     const MachineInstr &MI, BasicBlock *BB) {
-  switch (getInstructionType(MI)) {
+  InstructionType Type = getInstructionType(MI);
+  
+  if (isBinaryInstruction(MI)) {
+    BinaryOps BinOp = toBinaryOperation(Type);
+
+    if (BinOp == BinaryOps::BinaryOpsEnd) {
+      printFailure(MI, "Unimplemented or unknown binary instruction");
+      return false;
+    }
+
+    return raiseBinaryInstruction(BinOp, MI, BB);
+  }
+
+  switch (Type) {
   case InstructionType::NOP:
     return true;
-  case InstructionType::ADD:
-  case InstructionType::ADDI:
-    return raiseAddInstruction(MI, BB);
   case InstructionType::MOVE:
     return raiseMoveInstruction(MI, BB);
   case InstructionType::LOAD:
@@ -226,8 +236,8 @@ bool RISCV64MachineInstructionRaiser::raiseMachineInstruction(
   }
 }
 
-bool RISCV64MachineInstructionRaiser::raiseAddInstruction(
-    const MachineInstr &MI, BasicBlock *BB) {
+bool RISCV64MachineInstructionRaiser::raiseBinaryInstruction(
+    BinaryOps BinOp, const MachineInstr &MI, BasicBlock *BB) {
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
@@ -236,8 +246,9 @@ bool RISCV64MachineInstructionRaiser::raiseAddInstruction(
 
   assert(MOp1.isReg() && MOp2.isReg() && (MOp3.isReg() || MOp3.isImm()));
 
-  // Load value at stack offset
-  if (MOp2.getReg() == RISCV::X8 && MOp3.isImm()) {
+  // Instructions like `addi s0,$` should load value at stack offset
+  if (BinOp == BinaryOps::Add && MOp2.getReg() == RISCV::X8 &&
+      MOp3.isImm()) {
     RegisterValues[MOp1.getReg()] = StackValues[MOp3.getImm()];
     return true;
   }
@@ -254,7 +265,7 @@ bool RISCV64MachineInstructionRaiser::raiseAddInstruction(
     return false;
   }
 
-  RegisterValues[MOp1.getReg()] = Builder.CreateAdd(LHS, RHS);
+  RegisterValues[MOp1.getReg()] = Builder.CreateBinOp(BinOp, LHS, RHS);
 
   return true;
 }

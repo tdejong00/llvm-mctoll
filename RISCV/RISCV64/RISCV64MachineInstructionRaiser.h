@@ -25,11 +25,14 @@
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Value.h"
 #include <unordered_map>
 #include <zconf.h>
 
 namespace llvm {
 namespace mctoll {
+
+using BinaryOps = llvm::Instruction::BinaryOps;
 
 class RISCV64MachineInstructionRaiser : public MachineInstructionRaiser {
 public:
@@ -77,12 +80,13 @@ private:
   /// function and adds it (if applicable) to the basic block.
   bool raiseMachineInstruction(const MachineInstr &MI, BasicBlock *BB);
 
-  /// Raises an ADD or ADDI instruction by retrieving the values of the second
+  /// Raises the binary instruction by retrieving the values of the second
   /// operand (a register value) and the third operand (either a register value
-  /// or a constant value) and creating a BinaryOperator add instruction using
+  /// or a constant value) and creating a BinaryOperator instruction using
   /// these two values. The resulting instruction will be asigned to the
   /// register of the first operand in the register-value map.
-  bool raiseAddInstruction(const MachineInstr &MI, BasicBlock *BB);
+  bool raiseBinaryInstruction(BinaryOps BinOp, const MachineInstr &MI,
+                              BasicBlock *BB);
 
   /// Raises a MV or LI instruction by retrieving the register or immediate
   /// value of the second operand and assigning it to the register of the first

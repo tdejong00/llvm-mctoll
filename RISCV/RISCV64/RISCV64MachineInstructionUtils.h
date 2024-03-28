@@ -14,6 +14,7 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONUTILS_H
 #define LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONUTILS_H
 
+#include "RISCV64/RISCV64MachineInstructionRaiser.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/IR/LLVMContext.h"
@@ -26,10 +27,22 @@ namespace mctoll {
 /// machine instructions within basic blocks.
 namespace RISCV64MachineInstructionUtils {
 
-enum InstructionType {
+enum class InstructionType {
   NOP,
+  
   ADD,
   ADDI,
+  SUB,
+  MUL,
+  DIVS,
+  DIVU,
+  SLL,
+  SRL,
+  SRA,
+  AND,
+  OR,
+  XOR,
+
   MOVE,
   LOAD,
   STORE,
@@ -44,9 +57,12 @@ IntegerType *getDefaultIntType(LLVMContext &C);
 /// Gets the default pointer type.
 PointerType *getDefaultPtrType(LLVMContext &C);
 
-/// Determines the type of the machine instruction, which determines
-/// how the instruction will be raised.
+/// Determines the instruction type of the machine instruction.
 InstructionType getInstructionType(const MachineInstr &MI);
+/// Determines whether the instruction represents a binary operation.
+bool isBinaryInstruction(const MachineInstr &MI);
+/// Converts the instruction type to a binary operation.
+BinaryOps toBinaryOperation(InstructionType Type);
 
 /// Determines whether the machine instruction is a part of the prolog.
 bool isPrologInstruction(const MachineInstr &MI);
