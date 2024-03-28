@@ -7,6 +7,6 @@ void increment(int *X) {
 int main(void) {
     int X = 3;
     increment(&X);
-    printf("%d\n", X);
+    printf("%d\n", X); // Expected output: 4
     return 0;
 }
