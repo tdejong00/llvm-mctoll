@@ -95,6 +95,9 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
   std::vector<Type *> ArgumentTypes;
 
   for (MachineBasicBlock &MBB : MF) {
+    // Only consider entry blocks
+    if (!MBB.isEntryBlock()) continue;
+
     // Check if the instruction moves the argument to a local register or if it
     // stores the argument on the stack. Only check the first move/store
     // instructions after the prolog.
@@ -110,12 +113,14 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
         if (It->getOpcode() == RISCV::C_MV && MOp2.isReg() &&
             MOp2.getReg() == RegNo) {
           ArgumentTypes.push_back(getDefaultIntType(C));
+          break;
         }
         // Parameter register is stored on stack, could be a pointer
         // TODO: this assumption is most likely not sound
-        else if (It->getOpcode() == RISCV::SD && MOp1.isReg() &&
+        if (It->getOpcode() == RISCV::SD && MOp1.isReg() &&
                  MOp1.getReg() == RegNo) {
           ArgumentTypes.push_back(getDefaultPtrType(C));
+          break;
         }
       }
       ++It;
