@@ -75,9 +75,13 @@ public:
   }
 
 private:
-  /// Raises the machine instruction by calling the appropriate raise
-  /// function and adds it (if applicable) to the basic block.
-  bool raiseMachineInstruction(const MachineInstr &MI, BasicBlock *BB);
+  /// Raises the non-terminator machine instruction by calling the appropriate
+  /// raise function and adds it (if applicable) to the basic block.
+  bool raiseNonTerminatorInstruction(const MachineInstr &MI, BasicBlock *BB);
+
+  /// Raises the terminator machine instruction by calling the appropriate
+  /// raise function and adds it (if applicable) to the basic block.
+  bool raiseTerminatorInstruction(const MachineInstr &MI, BasicBlock *BB);
 
   /// Raises the binary instruction by retrieving the values of the second
   /// operand (a register value) and the third operand (either a register value
@@ -121,20 +125,41 @@ private:
   /// the register-value map.
   bool raiseCallInstruction(const MachineInstr &MI, BasicBlock *BB);
 
+  /// Raises a JR instruction by creating a ReturnInst using the value
+  /// stored in the return register in the register-value map.
+  bool raiseReturnInstruction(const MachineInstr &MI, BasicBlock *BB);
+
+  /// Raises a J instruction, by determining the basic block using the offset
+  /// of the immediate operand and creating an unconditional branch instruction
+  /// using the basic block as its target.
+  bool raiseUnconditonalBranchInstruction(const MachineInstr &MI,
+                                          BasicBlock *BB);
+
+  /// Raises a branch instruction (BGE, BLT, BEQ, etc.), by creating a compare
+  /// instruction using the LHS (register) and RHS (register or 0) of the
+  /// machine instruction. The result is used to created a conditional branch
+  /// instruction using the target basic block and successor basic block.
+  bool raiseConditionalBranchInstruction(Predicate Pred, const MachineInstr &MI,
+                                         BasicBlock *BB);
+
   /// Gets the function being called by the instruction by first checking if the
   /// function is known in the module raiser. If not, the .plt section is used
   /// for finding the called function.
   Function *getCalledFunction(const MachineInstr &MI) const;
 
-  /// Raises a JR instruction by creating a ReturnInst using the value
-  /// stored in the return register in the register-value map.
-  bool raiseReturnInstruction(const MachineInstr &MI, BasicBlock *BB);
+  /// Gets the basic block using the number of the machine basic block, which
+  /// the machine instruction is a part of. Returns nullptr if MBB could not
+  /// be found, or when the basic block has not been created.
+  BasicBlock *getBasicBlockAtOffset(const MachineInstr &MI, uint64_t Offset);
 
   LLVMContext &C;
   MCInstRaiser *MCIR;
 
   RISCV64FunctionPrototypeDiscoverer FunctionPrototypeDiscoverer;
   RISCVELFUtils ELFUtils;
+
+  /// A map from a MBB number to the corresponding BB.
+  std::unordered_map<int, BasicBlock *> BasicBlocks;
 
   /// A map from a register number to the value stored in that register.
   std::unordered_map<unsigned, Value *> RegisterValues;

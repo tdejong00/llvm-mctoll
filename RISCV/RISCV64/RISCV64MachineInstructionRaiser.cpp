@@ -31,6 +31,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
+#include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/CodeGen/Register.h"
@@ -54,6 +55,7 @@
 #include "llvm/MC/MCInst.h"
 #include "llvm/Object/SymbolicFile.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include <cassert>
@@ -124,39 +126,96 @@ bool RISCV64MachineInstructionRaiser::raise() {
   LoopTraversal Traversal;
   LoopTraversal::TraversalOrder TraversalOrder = Traversal.traverse(MF);
 
-  // Traverse basic blocks of machine function in LoopTraversal order
+  // Traverse basic blocks of machine function in LoopTraversal
+  // order and raise all non-terminator instructions
   for (LoopTraversal::TraversedMBBInfo MBBInfo : TraversalOrder) {
     MachineBasicBlock *MBB = MBBInfo.MBB;
 
     // Determine name of basic block
+    int MBBNo = MBB->getNumber();
     std::string BBName = "entry";
-    if (MBB->getNumber() > 0) {
-      BBName = "bb." + std::to_string(MBB->getNumber());
+    if (MBBNo > 0) {
+      BBName = "bb." + std::to_string(MBBNo);
     }
 
     // Create basic block
     BasicBlock *BB = BasicBlock::Create(C, BBName, RaisedFunction);
+
+    // Store basic block for reference during direct branch instructions
+    BasicBlocks[MBBNo] = BB;
 
     // Loop over machine instructions of basic block and raise each instruction.
     for (const MachineInstr &MI : MBB->instrs()) {
       bool WasAUIPC = MI.getPrevNode() != nullptr &&
                       MI.getPrevNode()->getOpcode() == RISCV::AUIPC;
 
-      // The instruction after an AUIPC is already handled during raising of
-      // the AUIPC instrucion. Also skip prolog and epilog instructions, as
-      // these do not contain any required information.
-      if (WasAUIPC || isPrologInstruction(MI) || isEpilogInstruction(MI)) {
-        printSkipped(MI);
+      // Skip raising of prolog and epilog instructions,
+      // as these do not contain any needed information
+      if (isPrologInstruction(MI)) {
+        printSkipped(MI, "Skipped raising of prolog instruction");
+        continue;
+      }
+      if (isEpilogInstruction(MI)) {
+        printSkipped(MI, "Skipped raising of epilog instruction");
         continue;
       }
 
-      if (raiseMachineInstruction(MI, BB)) {
+      // The instruction after an AUIPC is already handled
+      //  during raising of the AUIPC instrucion.
+      if (WasAUIPC) {
+        printSkipped(MI, "Already raised by previous instruction");
+        continue;
+      }
+
+      // Skip raising terminator instructions for now
+      if (MI.isTerminator() &&
+          getInstructionType(MI.getOpcode()) != InstructionType::RETURN) {
+        printSkipped(MI, "Skipped raising terminator instruction");
+        continue;
+      }
+
+      // Raise non-terminator instruction
+      if (raiseNonTerminatorInstruction(MI, BB)) {
         printSuccess(MI);
       }
     }
   }
 
-  LLVM_DEBUG(dbgs() << "\n"; RaisedFunction->dump());
+  LLVM_DEBUG(dbgs() << "\nBefore raising terminator instructions:\n");
+  LLVM_DEBUG(RaisedFunction->dump());
+
+  // Second pass, raise all terminator instructions
+  for (MachineBasicBlock &MBB : MF) {
+    // Check if basic block hase terminator instructions. If not,
+    // add fall through branch instruction to successor basic block.
+    if (MBB.getFirstTerminator() == MBB.end() && !MBB.succ_empty()) {
+      BasicBlock *CurrBB = BasicBlocks[MBB.getNumber()];
+      assert(CurrBB != nullptr && "BB has not been created");
+
+      BasicBlock *SuccBB = BasicBlocks[MBB.getNumber() + 1];
+      assert(SuccBB != nullptr && "Successor BB has not been created");
+
+      IRBuilder<> Builder(CurrBB);
+
+      Builder.CreateBr(SuccBB);
+
+      continue;
+    }
+
+    for (MachineInstr &MI : MBB) {
+      if (!MI.isUnconditionalBranch() && !MI.isConditionalBranch()) {
+        continue;
+      }
+
+      BasicBlock *BB = BasicBlocks[MBB.getNumber()];
+      if (raiseTerminatorInstruction(MI, BB)) {
+        printSuccess(MI);
+      }
+    }
+  }
+
+  LLVM_DEBUG(dbgs() << "\nAfter raising terminator instructions:\n");
+  LLVM_DEBUG(RaisedFunction->dump());
 
   return true;
 }
@@ -200,19 +259,22 @@ RISCV64MachineInstructionRaiser::getRegOrImmValue(const MachineOperand &MOp) {
   return ConstantInt::get(getDefaultIntType(C), MOp.getImm());
 }
 
-bool RISCV64MachineInstructionRaiser::raiseMachineInstruction(
+bool RISCV64MachineInstructionRaiser::raiseNonTerminatorInstruction(
     const MachineInstr &MI, BasicBlock *BB) {
-  InstructionType Type = getInstructionType(MI);
-  
-  if (isBinaryInstruction(MI)) {
-    BinaryOps BinOp = toBinaryOperation(Type);
+  InstructionType Type = getInstructionType(MI.getOpcode());
+
+  assert(Type != InstructionType::UNCONDITIONAL_BRANCH &&
+         Type != InstructionType::CONDITIONAL_BRANCH);
+
+  if (Type == InstructionType::BINOP) {
+    BinaryOps BinOp = toBinaryOperation(MI.getOpcode());
 
     if (BinOp == BinaryOps::BinaryOpsEnd) {
-      printFailure(MI, "Unimplemented or unknown binary instruction");
+      printFailure(MI, "Unimplemented or unknown binary operation");
       return false;
     }
 
-    return raiseBinaryInstruction(BinOp, MI, BB);
+    return raiseBinaryOperation(BinOp, MI, BB);
   }
 
   switch (Type) {
@@ -236,7 +298,27 @@ bool RISCV64MachineInstructionRaiser::raiseMachineInstruction(
   }
 }
 
-bool RISCV64MachineInstructionRaiser::raiseBinaryInstruction(
+bool RISCV64MachineInstructionRaiser::raiseTerminatorInstruction(
+    const MachineInstr &MI, BasicBlock *BB) {
+  InstructionType Type = getInstructionType(MI.getOpcode());
+
+  assert(Type == InstructionType::UNCONDITIONAL_BRANCH ||
+         Type == InstructionType::CONDITIONAL_BRANCH);
+
+  switch (Type) {
+  case InstructionType::UNCONDITIONAL_BRANCH:
+    return raiseUnconditonalBranchInstruction(MI, BB);
+  case InstructionType::CONDITIONAL_BRANCH: {
+    Predicate Pred = toPredicate(MI.getOpcode());
+    return raiseConditionalBranchInstruction(Pred, MI, BB);
+  }
+  default:
+    printFailure(MI, "Unimplemented or unknown instruction");
+    return false;
+  }
+}
+
+bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
     BinaryOps BinOp, const MachineInstr &MI, BasicBlock *BB) {
   IRBuilder<> Builder(BB);
 
@@ -247,8 +329,7 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryInstruction(
   assert(MOp1.isReg() && MOp2.isReg() && (MOp3.isReg() || MOp3.isImm()));
 
   // Instructions like `addi s0,$` should load value at stack offset
-  if (BinOp == BinaryOps::Add && MOp2.getReg() == RISCV::X8 &&
-      MOp3.isImm()) {
+  if (BinOp == BinaryOps::Add && MOp2.getReg() == RISCV::X8 && MOp3.isImm()) {
     RegisterValues[MOp1.getReg()] = StackValues[MOp3.getImm()];
     return true;
   }
@@ -489,6 +570,91 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
   return true;
 }
 
+bool RISCV64MachineInstructionRaiser::raiseUnconditonalBranchInstruction(
+    const MachineInstr &MI, BasicBlock *BB) {
+  IRBuilder<> Builder(BB);
+
+  const MachineOperand &MOp = MI.getOperand(0);
+
+  assert(MOp.isImm());
+
+  BasicBlock *Dest = getBasicBlockAtOffset(MI, MOp.getImm());
+
+  if (Dest == nullptr) {
+    printFailure(MI, "A BB has not been created for the specified MBBNo");
+    return false;
+  }
+
+  Builder.CreateBr(Dest);
+
+  return true;
+}
+
+bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
+    Predicate Pred, const MachineInstr &MI, BasicBlock *BB) {
+  IRBuilder<> Builder(BB);
+
+  const MachineOperand &MOp1 = MI.getOperand(0);
+  const MachineOperand &MOp2 = MI.getOperand(1);
+  const MachineOperand &MOp3 = MI.getOperand(2);
+
+  // the zero register for bnez en beqz is implicit, so no second register
+  // operand. All other branch instructions have two register operands and
+  // a single immediate operand.
+  bool IsImplicitZero =
+      MI.getOpcode() == RISCV::C_BNEZ || MI.getOpcode() == RISCV::C_BEQZ;
+
+  Value *RHS = nullptr;
+  uint64_t Offset;
+
+  // Offset is either in second or third operand, depending on if the
+  // instruction is one of the two zero instructions. The RHS is either
+  // a constant 0, or the value of the register of the second operand.
+  if (IsImplicitZero) {
+    assert(MOp1.isReg() && MOp2.isImm());
+    RHS = ConstantInt::get(getDefaultIntType(C), 0);
+    Offset = MOp2.getImm();
+  } else {
+    assert(MOp1.isReg() && MOp2.isReg() && MOp3.isImm());
+    RHS = RegisterValues[MOp2.getReg()];
+    Offset = MOp3.getImm();
+  }
+
+  if (RHS == nullptr) {
+    printFailure(MI, "RHS of branch instruction is not set");
+    return false;
+  }
+
+  Value *LHS = RegisterValues[MOp1.getReg()];
+  if (LHS == nullptr) {
+    printFailure(MI, "LHS of branch instruction is not set");
+    return false;
+  }
+
+  // Create compare instruction
+  Value *Cond = Builder.CreateCmp(Pred, LHS, RHS);
+
+  // Get successor (fall through branch) basic block
+  const MachineBasicBlock *MBB = MI.getParent();
+  BasicBlock *FalseBB = BasicBlocks[MBB->getNumber() + 1];
+  if (FalseBB == nullptr) {
+    printFailure(MI, "The successor BB has not been created.");
+    return false;
+  }
+
+  // Get destination basic block
+  BasicBlock *TrueBB = getBasicBlockAtOffset(MI, Offset);
+  if (TrueBB == nullptr) {
+    printFailure(MI, "The BB has not been created for the specified MBBNo");
+    return false;
+  }
+
+  // Create branch instruction
+  Builder.CreateCondBr(Cond, TrueBB, FalseBB);
+
+  return true;
+}
+
 Function *RISCV64MachineInstructionRaiser::getCalledFunction(
     const MachineInstr &MI) const {
   const MachineOperand &MOp2 = MI.getOperand(1);
@@ -511,4 +677,20 @@ Function *RISCV64MachineInstructionRaiser::getCalledFunction(
   }
 
   return CalledFunction;
+}
+
+BasicBlock *
+RISCV64MachineInstructionRaiser::getBasicBlockAtOffset(const MachineInstr &MI,
+                                                       uint64_t Offset) {
+  uint64_t InstructionOffset = MCIR->getMCInstIndex(MI) + Offset;
+
+  // Get number of the MBB of instruction at the offset
+  int64_t MBBNo = MCIR->getMBBNumberOfMCInstOffset(InstructionOffset, MF);
+
+  if (MBBNo == -1) {
+    printFailure(MI, "No MBB maps to the specified offset");
+    return nullptr;
+  }
+
+  return BasicBlocks[MBBNo];
 }
