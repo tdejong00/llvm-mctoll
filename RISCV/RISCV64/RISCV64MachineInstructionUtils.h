@@ -14,14 +14,18 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONUTILS_H
 #define LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64MACHINEINSTRUCTIONUTILS_H
 
-#include "RISCV64/RISCV64MachineInstructionRaiser.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
 
 namespace llvm {
 namespace mctoll {
+
+using BinaryOps = llvm::BinaryOperator::BinaryOps;
+using Predicate = llvm::CmpInst::Predicate;
 
 /// Contains utility functions regarding machine instructions and finding
 /// machine instructions within basic blocks.
@@ -29,26 +33,15 @@ namespace RISCV64MachineInstructionUtils {
 
 enum class InstructionType {
   NOP,
-  
-  ADD,
-  ADDI,
-  SUB,
-  MUL,
-  DIVS,
-  DIVU,
-  SLL,
-  SRL,
-  SRA,
-  AND,
-  OR,
-  XOR,
-
+  BINOP,
   MOVE,
   LOAD,
   STORE,
   GLOBAL,
   CALL,
   RETURN,
+  UNCONDITIONAL_BRANCH,
+  CONDITIONAL_BRANCH,
   UNKNOWN
 };
 
@@ -58,11 +51,14 @@ IntegerType *getDefaultIntType(LLVMContext &C);
 PointerType *getDefaultPtrType(LLVMContext &C);
 
 /// Determines the instruction type of the machine instruction.
-InstructionType getInstructionType(const MachineInstr &MI);
-/// Determines whether the instruction represents a binary operation.
-bool isBinaryInstruction(const MachineInstr &MI);
-/// Converts the instruction type to a binary operation.
-BinaryOps toBinaryOperation(InstructionType Type);
+InstructionType getInstructionType(unsigned Op);
+/// Converts the opcode to a binary operation.
+BinaryOps toBinaryOperation(unsigned Op);
+/// Converts the opcode to a compare predicate.
+Predicate toPredicate(unsigned Op);
+
+/// Determines whether the opcode is an ADDI instruction.
+bool isAddI(unsigned Op);
 
 /// Determines whether the machine instruction is a part of the prolog.
 bool isPrologInstruction(const MachineInstr &MI);

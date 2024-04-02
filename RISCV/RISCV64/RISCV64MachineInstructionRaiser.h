@@ -16,6 +16,7 @@
 
 #include "MCInstRaiser.h"
 #include "RISCV64/RISCV64FunctionPrototypeDiscoverer.h"
+#include "RISCV64/RISCV64MachineInstructionUtils.h"
 #include "RISCVELFUtils.h"
 #include "Raiser/MachineInstructionRaiser.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -31,8 +32,6 @@
 
 namespace llvm {
 namespace mctoll {
-
-using BinaryOps = llvm::Instruction::BinaryOps;
 
 class RISCV64MachineInstructionRaiser : public MachineInstructionRaiser {
 public:
@@ -85,8 +84,8 @@ private:
   /// or a constant value) and creating a BinaryOperator instruction using
   /// these two values. The resulting instruction will be asigned to the
   /// register of the first operand in the register-value map.
-  bool raiseBinaryInstruction(BinaryOps BinOp, const MachineInstr &MI,
-                              BasicBlock *BB);
+  bool raiseBinaryOperation(BinaryOps BinOp, const MachineInstr &MI,
+                            BasicBlock *BB);
 
   /// Raises a MV or LI instruction by retrieving the register or immediate
   /// value of the second operand and assigning it to the register of the first

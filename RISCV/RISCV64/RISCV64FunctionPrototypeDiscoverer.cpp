@@ -75,8 +75,8 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
           // not subceeded by a load instruction
           if (DefineIt->definesRegister(MOp.getReg()) &&
               Prev->getOpcode() == RISCV::AUIPC &&
-              getInstructionType(*DefineIt) == InstructionType::ADDI &&
-              getInstructionType(*Next) != InstructionType::LOAD) {
+              isAddI(DefineIt->getOpcode()) &&
+              getInstructionType(Next->getOpcode()) != InstructionType::LOAD) {
             return getDefaultPtrType(C);
           }
         }
