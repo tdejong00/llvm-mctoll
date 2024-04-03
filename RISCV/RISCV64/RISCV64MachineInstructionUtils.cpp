@@ -30,6 +30,15 @@ using namespace llvm;
 using namespace llvm::mctoll;
 using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
 
+Type *RISCV64MachineInstructionUtils::getDefaultType(LLVMContext &C,
+                                                     const MachineInstr &MI) {
+  if (MI.getOpcode() == RISCV::LD || MI.getOpcode() == RISCV::C_LD ||
+      MI.getOpcode() == RISCV::SD || MI.getOpcode() == RISCV::C_SD) {
+    return getDefaultPtrType(C);
+  }
+  return getDefaultIntType(C);
+}
+
 IntegerType *RISCV64MachineInstructionUtils::getDefaultIntType(LLVMContext &C) {
   return Type::getInt32Ty(C);
 }

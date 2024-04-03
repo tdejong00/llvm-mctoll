@@ -45,6 +45,8 @@ enum class InstructionType {
   UNKNOWN
 };
 
+/// Gets the default type for the machine instruction.
+Type *getDefaultType(LLVMContext &C, const MachineInstr &MI);
 /// Gets the default integer type.
 IntegerType *getDefaultIntType(LLVMContext &C);
 /// Gets the default pointer type.
@@ -78,7 +80,7 @@ findInstructionByOpcode(const MachineBasicBlock &MBB, unsigned Op,
 /// Finds the instruction in the basic block which defines the given register
 /// number. Only search up until the given end iterator.
 MachineBasicBlock::const_reverse_instr_iterator
-findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned RegNO,
+findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned RegNo,
                        MachineBasicBlock::const_reverse_instr_iterator EndIt);
 
 } // namespace RISCV64MachineInstructionUtils

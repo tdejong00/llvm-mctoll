@@ -81,7 +81,7 @@ private:
 
   /// Raises the terminator machine instruction by calling the appropriate
   /// raise function and adds it (if applicable) to the basic block.
-  bool raiseTerminatorInstruction(const MachineInstr &MI, BasicBlock *BB);
+  bool raiseTerminatorInstruction(ControlTransferInfo *Info);
 
   /// Raises the binary instruction by retrieving the values of the second
   /// operand (a register value) and the third operand (either a register value
@@ -132,15 +132,14 @@ private:
   /// Raises a J instruction, by determining the basic block using the offset
   /// of the immediate operand and creating an unconditional branch instruction
   /// using the basic block as its target.
-  bool raiseUnconditonalBranchInstruction(const MachineInstr &MI,
-                                          BasicBlock *BB);
+  bool raiseUnconditonalBranchInstruction(ControlTransferInfo *Info);
 
   /// Raises a branch instruction (BGE, BLT, BEQ, etc.), by creating a compare
   /// instruction using the LHS (register) and RHS (register or 0) of the
   /// machine instruction. The result is used to created a conditional branch
   /// instruction using the target basic block and successor basic block.
-  bool raiseConditionalBranchInstruction(Predicate Pred, const MachineInstr &MI,
-                                         BasicBlock *BB);
+  bool raiseConditionalBranchInstruction(Predicate Pred,
+                                         ControlTransferInfo *Info);
 
   /// Gets the function being called by the instruction by first checking if the
   /// function is known in the module raiser. If not, the .plt section is used

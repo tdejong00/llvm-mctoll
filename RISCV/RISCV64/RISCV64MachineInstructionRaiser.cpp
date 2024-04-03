@@ -15,6 +15,7 @@
 #include "MCInstRaiser.h"
 #include "MCTargetDesc/RISCVAsmBackend.h"
 #include "MCTargetDesc/RISCVMCTargetDesc.h"
+#include "MachineInstructionRaiser.h"
 #include "ModuleRaiser.h"
 #include "RISCV64FunctionPrototypeDiscoverer.h"
 #include "RISCV64MachineInstructionUtils.h"
@@ -58,6 +59,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <netinet/in.h>
@@ -167,10 +169,26 @@ bool RISCV64MachineInstructionRaiser::raise() {
         continue;
       }
 
-      // Skip raising terminator instructions for now
+      // Skip raising terminator instructions, record
+      // register values for use in second pass
       if (MI.isTerminator() &&
           getInstructionType(MI.getOpcode()) != InstructionType::RETURN) {
         printSkipped(MI, "Skipped raising terminator instruction");
+
+        // Record information about instruction for use in later pass
+        ControlTransferInfo *Info = new ControlTransferInfo;
+        Info->CandidateBlock = BB;
+        Info->CandidateMachineInstr = &MI;
+        for (unsigned I = 0; I < MI.getNumOperands(); I++) {
+          const MachineOperand &MOp = MI.getOperand(I);
+          if (MOp.isReg()) {
+            Info->RegValues.push_back(RegisterValues[MOp.getReg()]);
+          } else {
+            Info->RegValues.push_back(nullptr);
+          }
+        }
+        CTInfo.push_back(Info);
+
         continue;
       }
 
@@ -207,12 +225,23 @@ bool RISCV64MachineInstructionRaiser::raise() {
         continue;
       }
 
-      BasicBlock *BB = BasicBlocks[MBB.getNumber()];
-      if (raiseTerminatorInstruction(MI, BB)) {
+      // Find recorded info
+      auto It = std::find_if(CTInfo.begin(), CTInfo.end(),
+                             [&MI](ControlTransferInfo *Info) {
+                               return Info->CandidateMachineInstr == &MI;
+                             });
+      assert(It != CTInfo.end() && "Control Transfer Info not recorded");
+
+      if (raiseTerminatorInstruction(*It)) {
         printSuccess(MI);
       }
+
+      CTInfo.erase(It);
     }
   }
+
+  // All recorded instructions should have been handled
+  assert(CTInfo.empty() && "Unhandled branch instructions");
 
   LLVM_DEBUG(dbgs() << "\nAfter raising terminator instructions:\n");
   LLVM_DEBUG(RaisedFunction->dump());
@@ -299,21 +328,22 @@ bool RISCV64MachineInstructionRaiser::raiseNonTerminatorInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseTerminatorInstruction(
-    const MachineInstr &MI, BasicBlock *BB) {
-  InstructionType Type = getInstructionType(MI.getOpcode());
+    ControlTransferInfo *Info) {
+  const MachineInstr *MI = Info->CandidateMachineInstr;
+  InstructionType Type = getInstructionType(MI->getOpcode());
 
   assert(Type == InstructionType::UNCONDITIONAL_BRANCH ||
          Type == InstructionType::CONDITIONAL_BRANCH);
 
   switch (Type) {
   case InstructionType::UNCONDITIONAL_BRANCH:
-    return raiseUnconditonalBranchInstruction(MI, BB);
+    return raiseUnconditonalBranchInstruction(Info);
   case InstructionType::CONDITIONAL_BRANCH: {
-    Predicate Pred = toPredicate(MI.getOpcode());
-    return raiseConditionalBranchInstruction(Pred, MI, BB);
+    Predicate Pred = toPredicate(MI->getOpcode());
+    return raiseConditionalBranchInstruction(Pred, Info);
   }
   default:
-    printFailure(MI, "Unimplemented or unknown instruction");
+    printFailure(*MI, "Unimplemented or unknown instruction");
     return false;
   }
 }
@@ -428,13 +458,9 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
     return false;
   }
 
-  Type *Ty = getDefaultIntType(C);
-  if (MI.getOpcode() == RISCV::SD || MI.getOpcode() == RISCV::C_SD) {
-    Ty = getDefaultPtrType(C);
-  }
-
   Value *Ptr = nullptr;
   if (MOp2.getReg() == RISCV::X8) {
+    Type *Ty = getDefaultType(C, MI);
     Ptr = Builder.CreateAlloca(Ty);
     StackValues[MOp3.getImm()] = Ptr;
   } else if (MOp3.getImm() == 0) {
@@ -519,6 +545,13 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
   if (CalledFunctionType->isVarArg() ||
       CalledFunctionType->getNumParams() > 0) {
     for (unsigned ArgReg = RISCV::X10; ArgReg < RISCV::X17; ArgReg++) {
+      // Do not add too many arguments, values might
+      // still be present from  previous function calls.
+      if (Args.size() == CalledFunctionType->getNumParams() &&
+          !CalledFunctionType->isVarArg()) {
+        break;
+      }
+
       Value *RegVal = RegisterValues[ArgReg];
       if (RegVal == nullptr) {
         break;
@@ -571,8 +604,10 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseUnconditonalBranchInstruction(
-    const MachineInstr &MI, BasicBlock *BB) {
-  IRBuilder<> Builder(BB);
+    ControlTransferInfo *Info) {
+  IRBuilder<> Builder(Info->CandidateBlock);
+
+  const MachineInstr &MI = *Info->CandidateMachineInstr;
 
   const MachineOperand &MOp = MI.getOperand(0);
 
@@ -591,8 +626,10 @@ bool RISCV64MachineInstructionRaiser::raiseUnconditonalBranchInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
-    Predicate Pred, const MachineInstr &MI, BasicBlock *BB) {
-  IRBuilder<> Builder(BB);
+    Predicate Pred, ControlTransferInfo *Info) {
+  IRBuilder<> Builder(Info->CandidateBlock);
+
+  const MachineInstr &MI = *Info->CandidateMachineInstr;
 
   const MachineOperand &MOp1 = MI.getOperand(0);
   const MachineOperand &MOp2 = MI.getOperand(1);
@@ -616,7 +653,7 @@ bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
     Offset = MOp2.getImm();
   } else {
     assert(MOp1.isReg() && MOp2.isReg() && MOp3.isImm());
-    RHS = RegisterValues[MOp2.getReg()];
+    RHS = Info->RegValues[1];
     Offset = MOp3.getImm();
   }
 
@@ -625,7 +662,7 @@ bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
     return false;
   }
 
-  Value *LHS = RegisterValues[MOp1.getReg()];
+  Value *LHS = Info->RegValues[0];
   if (LHS == nullptr) {
     printFailure(MI, "LHS of branch instruction is not set");
     return false;
