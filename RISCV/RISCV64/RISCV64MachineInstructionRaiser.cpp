@@ -547,47 +547,50 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
 
   const MachineInstr *NextMI = MI.getNextNode();
 
-  if (NextMI->getOpcode() == RISCV::ADDI) {
-    const MachineOperand &MOp1 = NextMI->getOperand(0);
-    const MachineOperand &MOp3 = NextMI->getOperand(2);
-
-    assert(MOp1.isReg() && MOp3.isImm());
-
-    uint64_t InstOffset = MCIR->getMCInstIndex(MI);
-    uint64_t TextOffset = MR->getTextSectionAddress();
-    int64_t ValueOffset = MOp3.getImm();
-
-    // First attempt .rodata
-    uint64_t RODataOffset = InstOffset + TextOffset + ValueOffset;
-    Value *LowerBound = ConstantInt::get(Type::getInt32Ty(C), 0);
-    Value *UpperBound = nullptr;
-    GlobalVariable *GlobalVar =
-        ELFUtils.getRODataValueAtOffset(RODataOffset, UpperBound);
-
-    // Found in .rodata, create getelementptr instruction
-    if (GlobalVar != nullptr) {
-      RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(
-          GlobalVar->getValueType(), GlobalVar, {LowerBound, UpperBound});
-      return true;
-    }
-
-    // If not at .rodata, attempt .data
-    // TODO: the 0x2000 offset seems to be necessary, but
-    //       I can not explain it, might not always work
-    uint64_t DataOffset = InstOffset + TextOffset + ValueOffset + 0x2000;
-    GlobalVar = ELFUtils.getDataValueAtOffset(DataOffset);
-
-    if (GlobalVar == nullptr) {
-      printFailure(MI, "Global value not found");
-      return false;
-    }
-
-    // Found in .data, create ptrtoint instruction
-    RegisterValues[MOp1.getReg()] = GlobalVar;
-  } else {
-    printFailure(MI, "Not yet implemented AUIPC instruction");
+  if (NextMI->getOpcode() != RISCV::ADDI) {
+    printFailure(MI, "Expected instruction after AUIPC to be ADDI");
     return false;
   }
+
+  const MachineOperand &AUIPCMOp2 = MI.getOperand(1);
+  const MachineOperand &ADDIMOp1 = NextMI->getOperand(0);
+  const MachineOperand &ADDIMOp3 = NextMI->getOperand(2);
+
+  assert(AUIPCMOp2.isImm() && ADDIMOp1.isReg() && ADDIMOp3.isImm());
+
+  // auipc offset is shifted left by 12 bits
+  uint64_t PCOffset = AUIPCMOp2.getImm() << 12;
+
+  // Determine offset
+  uint64_t InstOffset = MCIR->getMCInstIndex(MI);
+  uint64_t TextOffset = MR->getTextSectionAddress();
+  int64_t ValueOffset = ADDIMOp3.getImm();
+
+  // First attempt .rodata
+  uint64_t RODataOffset = InstOffset + TextOffset + ValueOffset;
+  Value *LowerBound = ConstantInt::get(Type::getInt32Ty(C), 0);
+  Value *UpperBound = nullptr;
+  GlobalVariable *GlobalVar =
+      ELFUtils.getRODataValueAtOffset(RODataOffset, UpperBound);
+
+  // Found in .rodata, create getelementptr instruction
+  if (GlobalVar != nullptr) {
+    RegisterValues[ADDIMOp1.getReg()] = Builder.CreateInBoundsGEP(
+        GlobalVar->getValueType(), GlobalVar, {LowerBound, UpperBound});
+    return true;
+  }
+
+  // If not at .rodata, attempt .data
+  uint64_t DataOffset = InstOffset + TextOffset + ValueOffset + PCOffset;
+  GlobalVar = ELFUtils.getDataValueAtOffset(DataOffset);
+
+  if (GlobalVar == nullptr) {
+    printFailure(MI, "Global value not found");
+    return false;
+  }
+
+  // Found in .data, create ptrtoint instruction
+  RegisterValues[ADDIMOp1.getReg()] = GlobalVar;
 
   return true;
 }
