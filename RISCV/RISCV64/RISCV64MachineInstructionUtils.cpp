@@ -23,6 +23,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
 #include <algorithm>
+#include <cassert>
 
 #define DEBUG_TYPE "mctoll"
 
@@ -270,4 +271,27 @@ RISCV64MachineInstructionUtils::findInstructionByRegNo(
     return MI.definesRegister(RegNo);
   };
   return std::find_if(MBB.instr_rbegin(), EndIt, Pred);
+}
+
+BranchInfo
+RISCV64MachineInstructionUtils::constructBranchInfo(const MachineBasicBlock *MBB) {
+  BranchInfo BI;
+  for (const MachineInstr &MI : MBB->instrs()) {
+    InstructionType Type = getInstructionType(MI.getOpcode());
+    // Check if instruction stores to stack
+    if (Type == InstructionType::STORE) {
+      const MachineOperand &MOp1 = MI.getOperand(0);
+      const MachineOperand &MOp2 = MI.getOperand(1);
+      const MachineOperand &MOp3 = MI.getOperand(2);
+      assert(MOp1.isReg() && MOp2.isReg() && MOp3.isImm());
+      if (MOp2.getReg() == RISCV::X8) {
+        BI.StackStores.emplace_back(MOp3.getImm(), MI);
+      }
+    }
+    // For now, only check if instruction defines register x15/a5
+    else if (MI.definesRegister(RISCV::X15)) {
+      BI.RegisterDefinitions.emplace_back(RISCV::X15, MI);
+    }
+  }
+  return BI;
 }

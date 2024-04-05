@@ -20,6 +20,7 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include <algorithm>
 
 namespace llvm {
 namespace mctoll {
@@ -82,6 +83,50 @@ findInstructionByOpcode(const MachineBasicBlock &MBB, unsigned Op,
 MachineBasicBlock::const_reverse_instr_iterator
 findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned RegNo,
                        MachineBasicBlock::const_reverse_instr_iterator EndIt);
+
+/// A struct for storing which registers are defined
+/// and which stack offsets are stored in a branch.
+struct BranchInfo {
+
+  std::vector<std::pair<unsigned, const MachineInstr &>> RegisterDefinitions;
+  std::vector<std::pair<signed, const MachineInstr &>> StackStores;
+
+  /// Merges two BranchInfo instances by only taking the register
+  /// definitions and stack stores that occur in both instances.
+  BranchInfo merge(BranchInfo Other) {
+    BranchInfo MergedBranchInfo;
+
+    // Merge register definitions
+    for (auto OtherDefinition : Other.RegisterDefinitions) {
+      auto It = std::find_if(
+          RegisterDefinitions.begin(), RegisterDefinitions.end(),
+          [&OtherDefinition](
+              std::pair<unsigned, const MachineInstr &> RegisterDefinition) {
+            return RegisterDefinition.first == OtherDefinition.first;
+          });
+      if (It != RegisterDefinitions.end()) {
+        MergedBranchInfo.RegisterDefinitions.push_back(OtherDefinition);
+      }
+    }
+
+    // Merge stack stores
+    for (auto OtherStore : Other.StackStores) {
+      auto It = std::find_if(
+          StackStores.begin(), StackStores.end(),
+          [&OtherStore](std::pair<signed, const MachineInstr &> StackStore) {
+            return StackStore.first == OtherStore.first;
+          });
+      if (It != StackStores.end()) {
+        MergedBranchInfo.StackStores.push_back(OtherStore);
+      }
+    }
+
+    return MergedBranchInfo;
+  }
+};
+
+/// Constructs the branch info for the given basic block.
+BranchInfo constructBranchInfo(const MachineBasicBlock *MBB);
 
 } // namespace RISCV64MachineInstructionUtils
 } // namespace mctoll
