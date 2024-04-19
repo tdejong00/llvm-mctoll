@@ -52,11 +52,14 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/IR/Value.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Object/SymbolicFile.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/MachineValueType.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include <algorithm>
@@ -185,7 +188,7 @@ bool RISCV64MachineInstructionRaiser::raise() {
         // on which path is taken. To ensure that the returning basic block
         // uses the correct value, instead of the value which happens to be
         // present in that register/stack offset at that time, we create an
-        // allocation for each register/stack offset which both branches 
+        // allocation for each register/stack offset which both branches
         // define/store to. This pointer will then be used in subsequent
         // instruction which load/store from that register/stack offset.
         if (MBB->succ_size() == 2) {
@@ -193,7 +196,7 @@ bool RISCV64MachineInstructionRaiser::raise() {
           BranchInfo BranchInfo1 = constructBranchInfo(SuccMBB1);
           MachineBasicBlock *SuccMBB2 = *(MBB->succ_begin()++);
           BranchInfo BranchInfo2 = constructBranchInfo(SuccMBB2);
-          
+
           BranchInfo MergedBranchInfo = BranchInfo1.merge(BranchInfo2);
 
           IRBuilder<> Builder(BB);
@@ -204,7 +207,8 @@ bool RISCV64MachineInstructionRaiser::raise() {
           // Only consider register definitions if there
           // are no stores which both branches have made
           if (MergedBranchInfo.StackStores.empty()) {
-            for (auto RegisterDefinition : MergedBranchInfo.RegisterDefinitions) {
+            for (auto RegisterDefinition :
+                 MergedBranchInfo.RegisterDefinitions) {
               if (BranchRegisterValues[RegisterDefinition.first] != nullptr) {
                 continue;
               }
@@ -420,7 +424,8 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
 
   // If the register is a branch value, also store to that pointer
   if (BranchRegisterValues[MOp1.getReg()] != nullptr) {
-    Builder.CreateStore(RegisterValues[MOp1.getReg()], BranchRegisterValues[MOp1.getReg()]);
+    Builder.CreateStore(RegisterValues[MOp1.getReg()],
+                        BranchRegisterValues[MOp1.getReg()]);
   }
 
   return true;
@@ -468,6 +473,12 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
 
   assert(MOp1.isReg() && MOp2.isReg() && MOp3.isImm());
 
+  Value *Val = getRegOrArgValue(MOp2.getReg());
+  if (MOp2.getReg() != RISCV::X8 && Val == nullptr) {
+    printFailure(MI, "Register value of load instruction not set");
+    return false;
+  }
+
   Value *Ptr = nullptr;
 
   // Load from pointer made for branch value
@@ -476,15 +487,43 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   }
   // Load from stack
   else if (MOp2.getReg() == RISCV::X8) {
-    Ptr = StackValues[MOp3.getImm()];
+    int64_t StackOffset = MOp3.getImm();
+    Ptr = StackValues[StackOffset];
+    // When no value found at the specified stack offset, the instruction
+    // might be accessing the pointer stored at the previous stack value
     if (Ptr == nullptr) {
-      printFailure(MI, "Stack value of load instruction not set");
-      return false;
+      Value *ArrayPtr = StackValues[StackOffset - 4];
+      if (ArrayPtr == nullptr || !isa<GEPOperator>(ArrayPtr) ||
+          !isa<GlobalVariable>(ArrayPtr)) {
+        printFailure(MI, "Stack value of load instruction not set");
+        return false;
+      }
+
+      Type *ArrayTy = ArrayType::get(Type::getInt8Ty(C), 8);
+      ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
+      ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), 4);
+      Ptr = Builder.CreateInBoundsGEP(ArrayTy, ArrayPtr, {Zero, Index});
     }
+  }
+  // Local array or struct access
+  else if (isa<GEPOperator>(Val)) {
+    GEPOperator *GEPOp = dyn_cast<GEPOperator>(Val);
+    ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
+    ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), MOp3.getImm());
+    Ptr = Builder.CreateInBoundsGEP(GEPOp->getSourceElementType(), GEPOp,
+                                    {Zero, Index});
+  }
+  // Global array or struct access
+  else if (isa<GlobalVariable>(Val)) {
+    GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Val);
+    ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
+    ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), MOp3.getImm());
+    Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), GlobalVar,
+                                    {Zero, Index});
   }
   // Load value from address specified in register
   else if (MOp3.getImm() == 0) {
-    Ptr = getRegOrArgValue(MOp2.getReg());
+    Ptr = Val;
   }
 
   if (Ptr == nullptr) {

@@ -19,7 +19,10 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/TableGen/Record.h"
+#include <cassert>
 #include <cstdint>
 
 using namespace llvm;
@@ -159,9 +162,9 @@ RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
   const std::string SectionName = ".rodata";
 
   SectionRef Section = getSectionAtOffset(Offset, SectionName);
-  ArrayRef<Byte> SectionData = getSectionContents(Section);
+  ArrayRef<Byte> SectionContents = getSectionContents(Section);
 
-  if (SectionData.empty()) {
+  if (SectionContents.empty()) {
     return nullptr;
   }
 
@@ -170,7 +173,7 @@ RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
   // Check if global variable already created, create it if not
   GlobalVariable *GlobalVar = MR->getModule()->getNamedGlobal(ValueName);
   if (GlobalVar == nullptr) {
-    Constant *DataConstant = ConstantDataArray::get(C, SectionData);
+    Constant *DataConstant = ConstantDataArray::get(C, SectionContents);
 
     GlobalVar = new GlobalVariable(*MR->getModule(), DataConstant->getType(),
                                    true, GlobalValue::PrivateLinkage,
@@ -190,27 +193,16 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
   StringRef SymbolName =
       unwrapOrError(Symbol.getName(), ELFObjectFile->getFileName());
 
+  const std::string SectionName = ".data";
+  SectionRef Section = getSectionAtOffset(Offset, SectionName);
+  ArrayRef<Byte> SectionContents =
+      getSectionContents(Section, Offset - Section.getAddress());
+
+  assert(!SectionContents.empty() && "section data is unexpectedly empty");
+
   // Check if global variable already created, create it if not
   GlobalVariable *GlobalVar = MR->getModule()->getNamedGlobal(SymbolName);
   if (GlobalVar == nullptr) {
-    // Determine size and alignment
-    Type *Ty;
-    uint64_t Align;
-    switch (Symbol.getSize()) {
-    case 4:
-      Ty = Type::getInt32Ty(C);
-      Align = 32;
-      break;
-    case 2:
-      Ty = Type::getInt16Ty(C);
-      Align = 16;
-      break;
-    case 1:
-      Ty = Type::getInt8Ty(C);
-      Align = 8;
-      break;
-    }
-
     // Determine linkage type
     GlobalValue::LinkageTypes Linkage;
     switch (Symbol.getBinding()) {
@@ -225,18 +217,30 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
       break;
     }
 
-    // Determine initial value
-    const std::string SectionName = ".data";
-    SectionRef Section = getSectionAtOffset(Offset, SectionName);
-    ArrayRef<Byte> SectionContents =
-        getSectionContents(Section, Offset - Section.getAddress());
+    // Determine size and alignment
+    Type *Ty;
+    uint64_t Align = 0;
+    switch (Symbol.getSize()) {
+    case 4:
+      Ty = Type::getInt32Ty(C);
+      Align = 32;
+      break;
+    case 2:
+      Ty = Type::getInt16Ty(C);
+      Align = 16;
+      break;
+    case 1:
+      Ty = Type::getInt8Ty(C);
+      Align = 8;
+      break;
+    default:
+      Align = 8;
+      Ty = ArrayType::get(Type::getInt8Ty(C), SectionContents.size());
+    }
 
+    // Determine initial value
     Constant *Initializer = nullptr;
-    if (SectionContents.empty()) {
-      errs() << "section data is unexpectedly empty, initializing global "
-                "variable with 0";
-      Initializer = ConstantInt::get(getDefaultIntType(C), 0);
-    } else {
+    if (Ty->isIntegerTy()) {
       // Convert the array of bytes to a constant
       uint64_t InitVal = 0, Shift = 0;
       for (Byte B : SectionContents) {
@@ -244,8 +248,11 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
         Shift += 8;
       }
       Initializer = ConstantInt::get(Ty, InitVal);
+    } else if (Ty->isArrayTy()) {
+      Initializer = ConstantDataArray::get(C, SectionContents);
     }
 
+    // Create global variable
     GlobalVar = new GlobalVariable(*MR->getModule(), Ty, false, Linkage,
                                    Initializer, SymbolName);
     GlobalVar->setAlignment(MaybeAlign(Align));

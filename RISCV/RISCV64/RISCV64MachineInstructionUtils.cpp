@@ -45,7 +45,7 @@ IntegerType *RISCV64MachineInstructionUtils::getDefaultIntType(LLVMContext &C) {
 }
 
 PointerType *RISCV64MachineInstructionUtils::getDefaultPtrType(LLVMContext &C) {
-  return Type::getInt32PtrTy(C);
+  return Type::getInt64PtrTy(C);
 }
 
 InstructionType
@@ -273,8 +273,8 @@ RISCV64MachineInstructionUtils::findInstructionByRegNo(
   return std::find_if(MBB.instr_rbegin(), EndIt, Pred);
 }
 
-BranchInfo
-RISCV64MachineInstructionUtils::constructBranchInfo(const MachineBasicBlock *MBB) {
+BranchInfo RISCV64MachineInstructionUtils::constructBranchInfo(
+    const MachineBasicBlock *MBB) {
   BranchInfo BI;
   for (const MachineInstr &MI : MBB->instrs()) {
     InstructionType Type = getInstructionType(MI.getOpcode());
