@@ -21,7 +21,6 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/TableGen/Record.h"
 #include <cassert>
 #include <cstdint>
 

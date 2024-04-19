@@ -549,9 +549,12 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
   }
   // Store to stack
   else if (MOp2.getReg() == RISCV::X8) {
-    Type *Ty = getDefaultType(C, MI);
-    Ptr = Builder.CreateAlloca(Ty);
-    StackValues[MOp3.getImm()] = Ptr;
+    Ptr = StackValues[MOp3.getImm()];
+    // Check if already allocated, allocate if not
+    if (Ptr == nullptr) {
+      Type *Ty = getDefaultType(C, MI);
+      Ptr = StackValues[MOp3.getImm()] = Builder.CreateAlloca(Ty);
+    }
   }
   // Store to address specified in register
   else if (MOp3.getImm() == 0) {
