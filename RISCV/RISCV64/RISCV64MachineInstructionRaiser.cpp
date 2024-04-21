@@ -493,23 +493,32 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
       Ptr = Builder.CreateInBoundsGEP(ArrayTy, ArrayPtr, {Zero, Index});
     }
   }
-  // Local array or struct access
+  // Load from local array
   else if (isa<GEPOperator>(Val)) {
     GEPOperator *GEPOp = dyn_cast<GEPOperator>(Val);
-    ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
-    ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), MOp3.getImm());
-    Ptr = Builder.CreateInBoundsGEP(GEPOp->getSourceElementType(), GEPOp,
-                                    {Zero, Index});
+    if (GEPOp->getSourceElementType()->isArrayTy()) {
+      Type *Ty = GEPOp->getSourceElementType();
+      ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), MOp3.getImm());
+      Ptr = Builder.CreateInBoundsGEP(Ty, GEPOp, Index);
+    } else {
+      Ptr = GEPOp;
+    }
   }
-  // Global array or struct access
+  // Load from global array
   else if (isa<GlobalVariable>(Val)) {
     GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Val);
-    ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
-    ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), MOp3.getImm());
-    Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), GlobalVar,
-                                    {Zero, Index});
+    if (GlobalVar->getValueType()->isArrayTy()) {
+      Type *Ty = GlobalVar->getValueType();
+      ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
+      ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), MOp3.getImm());
+      Ptr = Builder.CreateInBoundsGEP(Ty, GlobalVar, { Zero, Index });
+    } else {
+      RegisterValues[MOp1.getReg()] = Builder.CreateAlignedLoad(
+          GlobalVar->getValueType(), GlobalVar, GlobalVar->getAlign());
+      return true;
+    }
   }
-  // Load value from address specified in register
+  // Load from address specified in register
   else if (MOp3.getImm() == 0) {
     Ptr = Val;
   }
@@ -619,7 +628,7 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
     return false;
   }
 
-  // Found in .data, create ptrtoint instruction
+  // Found in .data
   RegisterValues[ADDIMOp1.getReg()] = GlobalVar;
 
   return true;
