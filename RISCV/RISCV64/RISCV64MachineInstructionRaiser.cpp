@@ -141,7 +141,6 @@ bool RISCV64MachineInstructionRaiser::raise() {
 
     // Store basic block for future reference
     BasicBlocks[MBB.getNumber()] = BB;
-    
 
     // Loop over machine instructions of basic block and raise each instruction.
     for (const MachineInstr &MI : MBB.instrs()) {
@@ -568,6 +567,22 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
   // Store to address specified in register
   else if (MOp3.getImm() == 0) {
     Ptr = getRegOrArgValue(MOp2.getReg());
+  }
+  // Store to array
+  else {
+    Value *ArrayPtr = getRegOrArgValue(MOp2.getReg());
+    if (ArrayPtr == nullptr) {
+      printFailure(MI, "Array pointer of store instruction not set");
+      return false;
+    }
+    if (isa<GlobalVariable>(ArrayPtr)) {
+      GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr);
+      ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
+      ConstantInt *Index =
+          ConstantInt::get(getDefaultIntType(C), MOp3.getImm());
+      Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), GlobalVar,
+                                      {Zero, Index});
+    }
   }
 
   if (Ptr == nullptr) {
