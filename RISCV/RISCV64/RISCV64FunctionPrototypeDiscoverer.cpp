@@ -63,7 +63,7 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
       // Check if pointer return type
       const MachineOperand &MOp = DefineIt->getOperand(1);
       if (MOp.isReg()) {
-        for (; DefineIt != MBB.instr_rend(); ++DefineIt) {
+        for (; DefineIt != CallIt; ++DefineIt) {
           const MachineInstr *Prev = DefineIt->getPrevNode();
           const MachineInstr *Next = DefineIt->getNextNode();
           if (!Prev || !Next) {
@@ -96,7 +96,9 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
 
   for (MachineBasicBlock &MBB : MF) {
     // Only consider entry blocks
-    if (!MBB.isEntryBlock()) continue;
+    if (!MBB.isEntryBlock()) {
+      continue;
+    }
 
     // Check if the instruction moves the argument to a local register or if it
     // stores the argument on the stack. Only check the first move/store
@@ -118,7 +120,7 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
         // Parameter register is stored on stack, could be a pointer
         // TODO: this assumption is most likely not sound
         if (It->getOpcode() == RISCV::SD && MOp1.isReg() &&
-                 MOp1.getReg() == RegNo) {
+            MOp1.getReg() == RegNo) {
           ArgumentTypes.push_back(getDefaultPtrType(C));
           break;
         }
