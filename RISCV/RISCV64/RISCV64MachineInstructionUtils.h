@@ -16,11 +16,13 @@
 
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
 #include <algorithm>
+#include <cstdint>
 
 namespace llvm {
 namespace mctoll {
@@ -32,6 +34,7 @@ using Predicate = llvm::CmpInst::Predicate;
 /// machine instructions within basic blocks.
 namespace RISCV64MachineInstructionUtils {
 
+/// Represents different instruction types.
 enum class InstructionType {
   NOP,
   BINOP,
@@ -46,14 +49,18 @@ enum class InstructionType {
   UNKNOWN
 };
 
-/// Gets the default type for the machine instruction.
+/// Gets the default type for machine instruction using the given LLVM context,
+/// based on if the given machine instruction loads or stores a pointer.
 Type *getDefaultType(LLVMContext &C, const MachineInstr &MI);
-/// Gets the default integer type.
+/// Gets the default integer type using the given LLVM context.
 IntegerType *getDefaultIntType(LLVMContext &C);
-/// Gets the default pointer type.
+/// Gets the default pointer type using the given LLVM context.
 PointerType *getDefaultPtrType(LLVMContext &C);
 
-/// Determines the instruction type of the machine instruction.
+/// Creates a ConstantInt based on the given value.
+ConstantInt *toConstantInt(LLVMContext &C, uint64_t V);
+
+/// Determines the instruction type of the opcode.
 InstructionType getInstructionType(unsigned Op);
 /// Converts the opcode to a binary operation.
 BinaryOps toBinaryOperation(unsigned Op);
@@ -68,18 +75,19 @@ bool isPrologInstruction(const MachineInstr &MI);
 /// Determines whether the machine instruction is a part of the epilog.
 bool isEpilogInstruction(const MachineInstr &MI);
 
-/// Returns the iterator of the first instruction after the prolog.
+/// Returns the iterator of the first instruction
+/// after the prolog of the machine basic block.
 MachineBasicBlock::const_instr_iterator
 skipProlog(const MachineBasicBlock &MBB);
 
-/// Finds the instruction in the basic block which has the given opcode.
-/// Only search up until the given end iterator.
+/// Finds the instruction in the machine basic block which has
+/// the given opcode. Only searches up until the given end iterator.
 MachineBasicBlock::const_reverse_instr_iterator
 findInstructionByOpcode(const MachineBasicBlock &MBB, unsigned Op,
                         MachineBasicBlock::const_reverse_instr_iterator EndIt);
 
-/// Finds the instruction in the basic block which defines the given register
-/// number. Only search up until the given end iterator.
+/// Finds the instruction in the machine basic block which defines the
+/// given register number. Only searches up until the given end iterator.
 MachineBasicBlock::const_reverse_instr_iterator
 findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned RegNo,
                        MachineBasicBlock::const_reverse_instr_iterator EndIt);
@@ -91,13 +99,13 @@ struct BranchInfo {
   std::vector<std::pair<unsigned, const MachineInstr &>> RegisterDefinitions;
   std::vector<std::pair<signed, const MachineInstr &>> StackStores;
 
-  /// Merges two BranchInfo instances by only taking the register
-  /// definitions and stack stores that occur in both instances.
-  BranchInfo merge(BranchInfo Other) {
+  /// Merges the branch info with the current branch info by only taking 
+  /// the register definitions and stack stores that occur in both instances.
+  BranchInfo merge(BranchInfo BI) {
     BranchInfo MergedBranchInfo;
 
     // Merge register definitions
-    for (auto OtherDefinition : Other.RegisterDefinitions) {
+    for (auto OtherDefinition : BI.RegisterDefinitions) {
       auto It = std::find_if(
           RegisterDefinitions.begin(), RegisterDefinitions.end(),
           [&OtherDefinition](
@@ -110,7 +118,7 @@ struct BranchInfo {
     }
 
     // Merge stack stores
-    for (auto OtherStore : Other.StackStores) {
+    for (auto OtherStore : BI.StackStores) {
       auto It = std::find_if(
           StackStores.begin(), StackStores.end(),
           [&OtherStore](std::pair<signed, const MachineInstr &> StackStore) {
@@ -125,7 +133,7 @@ struct BranchInfo {
   }
 };
 
-/// Constructs the branch info for the given basic block.
+/// Constructs the branch info for the machine basic block.
 BranchInfo constructBranchInfo(const MachineBasicBlock *MBB);
 
 } // namespace RISCV64MachineInstructionUtils

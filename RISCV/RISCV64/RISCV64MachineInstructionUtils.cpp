@@ -48,6 +48,11 @@ PointerType *RISCV64MachineInstructionUtils::getDefaultPtrType(LLVMContext &C) {
   return Type::getInt64PtrTy(C);
 }
 
+ConstantInt *RISCV64MachineInstructionUtils::toConstantInt(LLVMContext &C,
+                                                           uint64_t V) {
+  return ConstantInt::get(getDefaultIntType(C), V);
+}
+
 InstructionType
 RISCV64MachineInstructionUtils::getInstructionType(unsigned Op) {
   switch (Op) {

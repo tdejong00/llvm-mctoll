@@ -157,6 +157,8 @@ private:
   RISCV64FunctionPrototypeDiscoverer FunctionPrototypeDiscoverer;
   RISCVELFUtils ELFUtils;
 
+  ConstantInt *Zero;
+
   /// A map from a MBB number to the corresponding BB.
   std::unordered_map<int, BasicBlock *> BasicBlocks;
 

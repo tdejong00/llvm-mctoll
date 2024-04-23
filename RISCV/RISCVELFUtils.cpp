@@ -181,8 +181,7 @@ RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
     GlobalVar->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
   }
 
-  UpperBound =
-      ConstantInt::get(Type::getInt32Ty(C), Offset - Section.getAddress());
+  UpperBound = toConstantInt(C, Offset - Section.getAddress());
 
   return GlobalVar;
 }

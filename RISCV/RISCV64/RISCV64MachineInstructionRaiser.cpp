@@ -124,7 +124,8 @@ RISCV64MachineInstructionRaiser::RISCV64MachineInstructionRaiser(
     : MachineInstructionRaiser(MF, MR, MCIR), C(MF.getFunction().getContext()),
       MCIR(MCIR), FunctionPrototypeDiscoverer(MF), ELFUtils(MR, C) {
   // Initialize hardwired zero register
-  RegisterValues[RISCV::X0] = ConstantInt::get(getDefaultIntType(C), 0);
+  Zero = toConstantInt(C, 0);
+  RegisterValues[RISCV::X0] = Zero;
 }
 
 bool RISCV64MachineInstructionRaiser::raise() {
@@ -316,7 +317,7 @@ RISCV64MachineInstructionRaiser::getRegOrImmValue(const MachineOperand &MOp) {
     return getRegOrArgValue(MOp.getReg());
   }
 
-  return ConstantInt::get(getDefaultIntType(C), MOp.getImm());
+  return toConstantInt(C, MOp.getImm());
 }
 
 bool RISCV64MachineInstructionRaiser::raiseNonTerminatorInstruction(
@@ -522,30 +523,26 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
       }
 
       Type *ArrayTy = ArrayType::get(Type::getInt8Ty(C), 8);
-      ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
-      ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), 4);
+      ConstantInt *Index = toConstantInt(C, 4);
       Ptr = Builder.CreateInBoundsGEP(ArrayTy, ArrayPtr, {Zero, Index});
     }
   }
-  // Load from local array
+  // Load from array
   else if (isa<GEPOperator>(Val)) {
     GEPOperator *GEPOp = dyn_cast<GEPOperator>(Val);
     if (GEPOp->getSourceElementType()->isArrayTy()) {
       Type *Ty = GEPOp->getSourceElementType();
-      ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), MOp3.getImm());
+      ConstantInt *Index = toConstantInt(C, MOp3.getImm());
       Ptr = Builder.CreateInBoundsGEP(Ty, GEPOp, Index);
     } else {
       Ptr = GEPOp;
     }
-  }
-  // Load from global array
-  else if (isa<GlobalVariable>(Val)) {
+  } else if (isa<GlobalVariable>(Val)) {
     GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Val);
     if (GlobalVar->getValueType()->isArrayTy()) {
       Type *Ty = GlobalVar->getValueType();
-      ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
-      ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(Ty, GlobalVar, { Zero, Index });
+      ConstantInt *Index = toConstantInt(C, MOp3.getImm());
+      Ptr = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
     } else {
       RegisterValues[MOp1.getReg()] = Builder.CreateAlignedLoad(
           GlobalVar->getValueType(), GlobalVar, GlobalVar->getAlign());
@@ -612,9 +609,7 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
     }
     if (isa<GlobalVariable>(ArrayPtr)) {
       GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr);
-      ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
-      ConstantInt *Index =
-          ConstantInt::get(getDefaultIntType(C), MOp3.getImm());
+      ConstantInt *Index = toConstantInt(C, MOp3.getImm());
       Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), GlobalVar,
                                       {Zero, Index});
     }
@@ -657,7 +652,7 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
 
   // First attempt .rodata
   uint64_t RODataOffset = InstOffset + TextOffset + ValueOffset;
-  Value *LowerBound = ConstantInt::get(Type::getInt32Ty(C), 0);
+  Value *LowerBound = Zero;
   Value *UpperBound = nullptr;
   GlobalVariable *GlobalVar =
       ELFUtils.getRODataValueAtOffset(RODataOffset, UpperBound);
@@ -806,7 +801,7 @@ bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
   // a constant 0, or the value of the register of the second operand.
   if (IsImplicitZero) {
     assert(MOp1.isReg() && MOp2.isImm());
-    RHS = ConstantInt::get(getDefaultIntType(C), 0);
+    RHS = Zero;
     Offset = MOp2.getImm();
   } else {
     assert(MOp1.isReg() && MOp2.isReg() && MOp3.isImm());
