@@ -1,6 +1,6 @@
 // REQUIRES: system-linux
 // RUN: riscv64-linux-gnu-gcc -o %t %s
-// RUN: llvm-mctoll -d %t --include-files=/usr/include/stdio.h,/usr/include/string.h
+// RUN: llvm-mctoll -d -debug %t --include-files=/usr/include/stdio.h,/usr/include/string.h
 // RUN: lli %t-dis.ll | FileCheck %s
 // CHECK: Hello == World: -15
 // CHECK: Hello == Hello: 0
