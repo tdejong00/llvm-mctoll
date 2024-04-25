@@ -53,6 +53,7 @@
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Object/SymbolicFile.h"
@@ -382,19 +383,6 @@ bool RISCV64MachineInstructionRaiser::raiseTerminatorInstruction(
 
 bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
     BinaryOps BinOp, const MachineInstr &MI, BasicBlock *BB) {
-
-  // FIXME: the shift instructions for determining array index
-  // are not necessary at the moment, and results in segfault, why?
-  const MachineInstr *PrevMI = MI.getPrevNode();
-  const MachineInstr *NextMI = MI.getNextNode();
-  if (BinOp == BinaryOps::Shl && PrevMI->getOpcode() == RISCV::LW &&
-      PrevMI->getOperand(1).getReg() == RISCV::X8 &&
-      NextMI->getOpcode() == RISCV::LD &&
-      NextMI->getOperand(1).getReg() == RISCV::X8) {
-    printSkipped(MI, "Skipped unnecessary shift instruction");
-    return false;
-  }
-
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
@@ -421,21 +409,11 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
     return false;
   }
 
-  // Instructions like `add a5, a5, a4`, where a4 is an address and a5 is an
-  // integer, should calcuate the address with the offset
-  if (BinOp == BinaryOps::Add && isa<GlobalVariable>(RHS)) {
-    GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(RHS);
-    ConstantInt *Zero = ConstantInt::get(getDefaultIntType(C), 0);
-    RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(
-        GlobalVar->getValueType(), GlobalVar, {Zero, LHS});
-    return true;
-  }
-  if (BinOp == BinaryOps::Add && isa<LoadInst>(RHS) &&
-      RHS->getType()->isPointerTy()) {
-    LoadInst *Load = dyn_cast<LoadInst>(RHS);
-    Value *Ptr = Builder.CreateInBoundsGEP(Load->getType(), Load, LHS);
-    RegisterValues[MOp1.getReg()] = Ptr;
-    return true;
+  if (BinOp == BinaryOps::Add &&
+      LHS->getType()->isPointerTy() != RHS->getType()->isPointerTy()) {
+    Value *Ptr = LHS->getType()->isPointerTy() ? LHS : RHS;
+    Value *Val = LHS->getType()->isPointerTy() ? RHS : LHS;
+    return raiseAddressOffsetInstruction(MI, Ptr, Val, BB);
   }
 
   if (LHS->getType() != RHS->getType()) {
@@ -449,6 +427,40 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
   if (BranchRegisterValues[MOp1.getReg()] != nullptr) {
     Builder.CreateStore(RegisterValues[MOp1.getReg()],
                         BranchRegisterValues[MOp1.getReg()]);
+  }
+
+  return true;
+}
+
+bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
+    const MachineInstr &MI, Value *Ptr, Value *Val, BasicBlock *BB) {
+  IRBuilder<> Builder(BB);
+
+  assert(Ptr->getType()->isPointerTy() && "expected a pointer type");
+  assert(!Val->getType()->isPointerTy() && "expected an integral type");
+
+  const MachineOperand &MOp1 = MI.getOperand(0);
+  assert(MOp1.isReg());
+
+  if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Ptr)) {
+    Type *Ty = GlobalVar->getValueType();
+    RegisterValues[MOp1.getReg()] =
+        Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Val});
+  } else if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(Ptr)) {
+    Type *Ty = GEPOp->getResultElementType();
+    RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(Ty, GEPOp, Val);
+  } else if (LoadInst *Load = dyn_cast<LoadInst>(Ptr)) {
+    // In this case, the type is not known. Look at the next instruction to
+    // determine the type. It is assumed that the next instruction will be
+    // a load instruction.
+    const MachineInstr *NextMI = MI.getNextNode();
+    assert(getInstructionType(NextMI->getOpcode()) == InstructionType::LOAD &&
+           "expected a load instruction after address offset instruction");
+    Type *Ty = getDefaultType(C, *NextMI);
+    RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(Ty, Load, Val);
+  } else {
+    printFailure(MI, "unexpected pointer type");
+    return false;
   }
 
   return true;

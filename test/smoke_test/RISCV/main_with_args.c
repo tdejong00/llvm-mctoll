@@ -1,6 +1,6 @@
 // REQUIRES: system-linux
 // RUN: riscv64-linux-gnu-gcc -o %t %s
-// RUN: llvm-mctoll -d %t -I /usr/include/stdio.h
+// RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll a b c | FileCheck %s
 // CHECK: 4 arguments:
 // CHECK: Argument 1: a

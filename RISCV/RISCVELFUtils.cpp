@@ -21,6 +21,8 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstdint>
 
@@ -161,8 +163,11 @@ RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
   const std::string SectionName = ".rodata";
 
   SectionRef Section = getSectionAtOffset(Offset, SectionName);
-  ArrayRef<Byte> SectionContents = getSectionContents(Section);
+  if (Section == SectionRef()) {
+    return nullptr;
+  }
 
+  ArrayRef<Byte> SectionContents = getSectionContents(Section);
   if (SectionContents.empty()) {
     return nullptr;
   }
@@ -193,6 +198,8 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
 
   const std::string SectionName = ".data";
   SectionRef Section = getSectionAtOffset(Offset, SectionName);
+  assert(Section != SectionRef() && "section is unexpectedly not found");
+
   ArrayRef<Byte> SectionContents =
       getSectionContents(Section, Offset - Section.getAddress());
 

@@ -91,6 +91,16 @@ private:
   bool raiseBinaryOperation(BinaryOps BinOp, const MachineInstr &MI,
                             BasicBlock *BB);
 
+  /// Determines whether the add instruction adds an offset to an address to
+  /// compute a new address, i.e. instructions such as `add a5, a5, a4`, where
+  /// a5 is a pointer type and a4 is not, or vice versa.
+  bool isAddressOffsetInstruction(BinaryOps BinOp, Type *LHSTy, Type *RHSTy);
+
+  /// Raises the add instruction which represents adding an offset to
+  /// to an address by creating an in bounds GEP instruction.
+  bool raiseAddressOffsetInstruction(const MachineInstr &MI, Value *Ptr,
+                                     Value *Val, BasicBlock *BB);
+
   /// Raises a MV or LI instruction by retrieving the register or immediate
   /// value of the second operand and assigning it to the register of the first
   /// operand in the register-value map.
