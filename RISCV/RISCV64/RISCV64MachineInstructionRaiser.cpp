@@ -442,6 +442,16 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
   const MachineOperand &MOp1 = MI.getOperand(0);
   assert(MOp1.isReg());
 
+  // Remove unnecessary Shl instructions for array accesses
+  if (BinaryOperator *BinOp = dyn_cast<BinaryOperator>(Val)) {
+    Value *LHS = BinOp->getOperand(0);
+    Value *RHS = BinOp->getOperand(1);
+    if (BinOp->getOpcode() == BinaryOps::Shl && isa<ConstantInt>(RHS)) {
+      Val = LHS;
+      BinOp->eraseFromParent();
+    }
+  }
+
   if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Ptr)) {
     Type *Ty = GlobalVar->getValueType();
     RegisterValues[MOp1.getReg()] =
