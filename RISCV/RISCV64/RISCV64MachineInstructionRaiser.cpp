@@ -453,20 +453,20 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
   }
 
   if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Ptr)) {
-    Type *Ty = GlobalVar->getValueType();
+    // Look at type of next node, which should be a load instruction
+    assert(getInstructionType(MI.getNextNode()->getOpcode()) ==
+           InstructionType::LOAD && "expected next instruction to be a load");
+    Type *Ty = getDefaultType(C, *MI.getNextNode());
     RegisterValues[MOp1.getReg()] =
-        Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Val});
+        Builder.CreateInBoundsGEP(Ty, GlobalVar, Val);
   } else if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(Ptr)) {
     Type *Ty = GEPOp->getResultElementType();
     RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(Ty, GEPOp, Val);
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Ptr)) {
-    // In this case, the type is not known. Look at the next instruction to
-    // determine the type. It is assumed that the next instruction will be
-    // a load instruction.
-    const MachineInstr *NextMI = MI.getNextNode();
-    assert(getInstructionType(NextMI->getOpcode()) == InstructionType::LOAD &&
-           "expected a load instruction after address offset instruction");
-    Type *Ty = getDefaultType(C, *NextMI);
+    // Look at type of next node, which should be a load instruction
+    assert(getInstructionType(MI.getNextNode()->getOpcode()) ==
+           InstructionType::LOAD && "expected next instruction to be a load");
+    Type *Ty = getDefaultType(C, *MI.getNextNode());
     RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(Ty, Load, Val);
   } else {
     printFailure(MI, "unexpected pointer type");
