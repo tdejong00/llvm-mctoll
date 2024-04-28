@@ -182,28 +182,33 @@ bool RISCV64MachineInstructionRaiser::raise() {
         // instruction which load/store from that register/stack offset.
         if (MBB.succ_size() == 2) {
           MachineBasicBlock *SuccMBB1 = *MBB.succ_begin();
-          BranchInfo BranchInfo1 = constructBranchInfo(SuccMBB1);
           MachineBasicBlock *SuccMBB2 = *(MBB.succ_begin()++);
-          BranchInfo BranchInfo2 = constructBranchInfo(SuccMBB2);
 
-          BranchInfo MergedBranchInfo = BranchInfo1.merge(BranchInfo2);
+          // Only consider non-looping branches
+          if (!MBB.isPredecessor(SuccMBB1) && !MBB.isPredecessor(SuccMBB2)) {
+            BranchInfo BranchInfo1 = constructBranchInfo(SuccMBB1);
+            BranchInfo BranchInfo2 = constructBranchInfo(SuccMBB2);
 
-          IRBuilder<> Builder(BB);
-          for (auto StackStore : MergedBranchInfo.StackStores) {
-            Type *Ty = getDefaultType(C, StackStore.second);
-            BranchStackValues[StackStore.first] = Builder.CreateAlloca(Ty);
-          }
-          // Only consider register definitions if there
-          // are no stores which both branches have made
-          if (MergedBranchInfo.StackStores.empty()) {
-            for (auto RegisterDefinition :
-                 MergedBranchInfo.RegisterDefinitions) {
-              if (BranchRegisterValues[RegisterDefinition.first] != nullptr) {
-                continue;
+            BranchInfo MergedBranchInfo = BranchInfo1.merge(BranchInfo2);
+
+            IRBuilder<> Builder(BB);
+            for (auto StackStore : MergedBranchInfo.StackStores) {
+              Type *Ty = getDefaultType(C, StackStore.second);
+              MI.dump();
+              BranchStackValues[StackStore.first] = Builder.CreateAlloca(Ty);
+            }
+            // Only consider register definitions if there
+            // are no stores which both branches have made
+            if (MergedBranchInfo.StackStores.empty()) {
+              for (auto RegisterDefinition :
+                   MergedBranchInfo.RegisterDefinitions) {
+                if (BranchRegisterValues[RegisterDefinition.first] != nullptr) {
+                  continue;
+                }
+                Type *Ty = getDefaultType(C, RegisterDefinition.second);
+                BranchRegisterValues[RegisterDefinition.first] =
+                    Builder.CreateAlloca(Ty);
               }
-              Type *Ty = getDefaultType(C, RegisterDefinition.second);
-              BranchRegisterValues[RegisterDefinition.first] =
-                  Builder.CreateAlloca(Ty);
             }
           }
         }
@@ -442,7 +447,7 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
   const MachineOperand &MOp1 = MI.getOperand(0);
   assert(MOp1.isReg());
 
-  // Remove unnecessary Shl instructions for array accesses, because the 
+  // Remove unnecessary Shl instructions for array accesses, because the
   // operands of the GEP instructions represent indices and not number of
   // bytes.
   if (BinaryOperator *BinOp = dyn_cast<BinaryOperator>(Val)) {
@@ -456,8 +461,11 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
 
   if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Ptr)) {
     // Look at type of next node, which should be a load instruction
-    assert(getInstructionType(MI.getNextNode()->getOpcode()) ==
-           InstructionType::LOAD && "expected next instruction to be a load");
+    if (getInstructionType(MI.getNextNode()->getOpcode()) !=
+        InstructionType::LOAD) {
+      printFailure(MI, "expected next instruction to be a load instruction");
+      return false;
+    }
     Type *Ty = getDefaultType(C, *MI.getNextNode());
     RegisterValues[MOp1.getReg()] =
         Builder.CreateInBoundsGEP(Ty, GlobalVar, Val);
@@ -466,8 +474,11 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
     RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(Ty, GEPOp, Val);
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Ptr)) {
     // Look at type of next node, which should be a load instruction
-    assert(getInstructionType(MI.getNextNode()->getOpcode()) ==
-           InstructionType::LOAD && "expected next instruction to be a load");
+    if (getInstructionType(MI.getNextNode()->getOpcode()) !=
+        InstructionType::LOAD) {
+      printFailure(MI, "expected next instruction to be a load instruction");
+      return false;
+    }
     Type *Ty = getDefaultType(C, *MI.getNextNode());
     RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(Ty, Load, Val);
   } else {
