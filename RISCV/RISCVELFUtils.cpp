@@ -202,94 +202,95 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
   StringRef SymbolName =
       unwrapOrError(Symbol.getName(), ELFObjectFile->getFileName());
 
+  // Check if global variable already created
+  GlobalVariable *GlobalVar = MR->getModule()->getNamedGlobal(SymbolName);
+  if (GlobalVar != nullptr) {
+    return GlobalVar;
+  }
+
   const std::string SectionName = ".data";
   SectionRef Section = getSectionAtOffset(Offset, SectionName);
-  assert(Section != SectionRef() && "section is unexpectedly not found");
-
-  ArrayRef<Byte> SectionContents = getSectionContents(
-      Section, Offset - Section.getAddress(), Symbol.getSize());
-
-  assert(!SectionContents.empty() && "section data is unexpectedly empty");
-
-  // Check if global variable already created, create it if not
-  GlobalVariable *GlobalVar = MR->getModule()->getNamedGlobal(SymbolName);
-  if (GlobalVar == nullptr) {
-    // Determine linkage type
-    GlobalValue::LinkageTypes Linkage;
-    switch (Symbol.getBinding()) {
-    case ELF::STB_GLOBAL:
-      Linkage = GlobalValue::ExternalLinkage;
-      break;
-    case ELF::STB_LOCAL:
-      Linkage = GlobalValue::InternalLinkage;
-      break;
-    default:
-      Linkage = GlobalValue::ExternalLinkage;
-      break;
-    }
-
-    // Determine size and alignment
-    Type *Ty;
-    uint64_t Align = 0;
-    switch (Symbol.getSize()) {
-    case 4:
-      Ty = Type::getInt32Ty(C);
-      Align = 4;
-      break;
-    case 2:
-      Ty = Type::getInt16Ty(C);
-      Align = 2;
-      break;
-    case 1:
-      Ty = Type::getInt8Ty(C);
-      Align = 1;
-      break;
-    default:
-      // More than 4 bytes -> must be array or struct
-      IntegerType *ElementType = getDefaultIntType(C);
-      Align = ElementType->getBitWidth() / 8;
-      uint64_t NumElements = SectionContents.size() / Align;
-      Ty = ArrayType::get(ElementType, NumElements);
-    }
-
-    // Determine initial value
-    Constant *Initializer = nullptr;
-    if (Ty->isIntegerTy()) {
-      // Convert the array of bytes to a constant, by combining
-      // the bytes into a 32-bit integer in little-endian format
-      uint32_t InitVal = 0, Shift = 0;
-      for (Byte B : SectionContents) {
-        InitVal |= static_cast<uint32_t>(B) << Shift;
-        Shift += 8;
-      }
-      Initializer = ConstantInt::get(Ty, InitVal);
-    } else if (Ty->isArrayTy()) {
-      // Determine width of element type
-      ArrayType *ArrayTy = dyn_cast<ArrayType>(Ty);
-      unsigned ElementWidth = ArrayTy->getElementType()->getIntegerBitWidth();
-
-      // Convert the array of bytes to an array of constants, by combining
-      // the bytes into 32-bit integers in little-endian format
-      vector<uint32_t> InitVals;
-      uint32_t InitVal = 0, Shift = 0;
-      for (Byte B : SectionContents) {
-        InitVal |= (static_cast<uint32_t>(B) << Shift);
-        Shift += 8;
-        if (Shift == ElementWidth) {
-          InitVals.push_back(InitVal);
-          InitVal = 0;
-          Shift = 0;
-        }
-      }
-      Initializer = ConstantDataArray::get(C, InitVals);
-    }
-
-    // Create global variable
-    GlobalVar = new GlobalVariable(*MR->getModule(), Ty, false, Linkage,
-                                   Initializer, SymbolName);
-    GlobalVar->setAlignment(MaybeAlign(Align));
-    GlobalVar->setDSOLocal(true);
+  ArrayRef<Byte> SectionContents;
+  if (Section != SectionRef()) {
+    SectionContents = getSectionContents(Section, Offset - Section.getAddress(),
+                                         Symbol.getSize());
   }
+
+  // Determine linkage type
+  GlobalValue::LinkageTypes Linkage;
+  switch (Symbol.getBinding()) {
+  case ELF::STB_GLOBAL:
+    Linkage = GlobalValue::ExternalLinkage;
+    break;
+  case ELF::STB_LOCAL:
+    Linkage = GlobalValue::InternalLinkage;
+    break;
+  default:
+    Linkage = GlobalValue::ExternalLinkage;
+    break;
+  }
+
+  // Determine size and alignment
+  Type *Ty;
+  uint64_t Align = 0;
+  switch (Symbol.getSize()) {
+  case 4:
+    Ty = Type::getInt32Ty(C);
+    Align = 4;
+    break;
+  case 2:
+    Ty = Type::getInt16Ty(C);
+    Align = 2;
+    break;
+  case 1:
+    Ty = Type::getInt8Ty(C);
+    Align = 1;
+    break;
+  default:
+    // More than 4 bytes -> must be array or struct
+    IntegerType *ElementType = getDefaultIntType(C);
+    Align = ElementType->getBitWidth() / 8;
+    uint64_t NumElements = SectionContents.size() / Align;
+    Ty = ArrayType::get(ElementType, NumElements);
+  }
+
+  // Determine initial value
+  Constant *Initializer = nullptr;
+  if (Ty->isIntegerTy()) {
+    // Convert the array of bytes to a constant, by combining
+    // the bytes into a 32-bit integer in little-endian format
+    uint32_t InitVal = 0, Shift = 0;
+    for (Byte B : SectionContents) {
+      InitVal |= static_cast<uint32_t>(B) << Shift;
+      Shift += 8;
+    }
+    Initializer = ConstantInt::get(Ty, InitVal);
+  } else if (Ty->isArrayTy()) {
+    // Determine width of element type
+    ArrayType *ArrayTy = dyn_cast<ArrayType>(Ty);
+    unsigned ElementWidth = ArrayTy->getElementType()->getIntegerBitWidth();
+
+    // Convert the array of bytes to an array of constants, by combining
+    // the bytes into 32-bit integers in little-endian format
+    vector<uint32_t> InitVals;
+    uint32_t InitVal = 0, Shift = 0;
+    for (Byte B : SectionContents) {
+      InitVal |= (static_cast<uint32_t>(B) << Shift);
+      Shift += 8;
+      if (Shift == ElementWidth) {
+        InitVals.push_back(InitVal);
+        InitVal = 0;
+        Shift = 0;
+      }
+    }
+    Initializer = ConstantDataArray::get(C, InitVals);
+  }
+
+  // Create global variable
+  GlobalVar = new GlobalVariable(*MR->getModule(), Ty, false, Linkage,
+                                 Initializer, SymbolName);
+  GlobalVar->setAlignment(MaybeAlign(Align));
+  GlobalVar->setDSOLocal(true);
 
   return GlobalVar;
 }

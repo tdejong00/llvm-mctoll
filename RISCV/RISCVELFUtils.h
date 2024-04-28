@@ -42,9 +42,9 @@ public:
         ELFObjectFile(dyn_cast<ELF64LEObjectFile>(MR->getObjectFile())) {}
 
   /// Gets the section of the ELF which contains the given offset and optionally
-  /// checks if it has the given name. If the section could not be found or the
-  /// given name does not correspond to the name of the section, a default
-  /// constructed section will be returned.
+  /// checks if it has the given name. If the section could not be found (e.g.
+  /// an uninitialized global variable) or the given name does not correspond
+  /// to the name of the section, a default section will be returned.
   SectionRef getSectionAtOffset(uint64_t Offset, StringRef Name = "") const;
 
   /// Extracts the contents of the given ELF section and returns it as an array
@@ -54,8 +54,8 @@ public:
   ArrayRef<Byte> getSectionContents(SectionRef Section, uint64_t Offset = 0,
                                     uint64_t Length = 0) const;
 
-  /// Gets the ELF symbol which contains the given offset. If the symbol can
-  /// not be found, a default constructed symbol will be returned.
+  /// Gets the ELF symbol which contains the given offset. If the
+  /// symbol can not be found, a default symbol will be returned.
   ELFSymbolRef getSymbolAtOffset(uint64_t Offset) const;
 
   /// Gets the relocation located in the .plt ELF section at the given offset.
