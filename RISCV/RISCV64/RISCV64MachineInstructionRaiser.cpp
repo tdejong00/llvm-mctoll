@@ -460,12 +460,6 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
   }
 
   if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Ptr)) {
-    // Look at type of next node, which should be a load instruction
-    if (getInstructionType(MI.getNextNode()->getOpcode()) !=
-        InstructionType::LOAD) {
-      printFailure(MI, "expected next instruction to be a load instruction");
-      return false;
-    }
     Type *Ty = getDefaultType(C, *MI.getNextNode());
     RegisterValues[MOp1.getReg()] =
         Builder.CreateInBoundsGEP(Ty, GlobalVar, Val);
@@ -473,12 +467,6 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
     Type *Ty = GEPOp->getResultElementType();
     RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(Ty, GEPOp, Val);
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Ptr)) {
-    // Look at type of next node, which should be a load instruction
-    if (getInstructionType(MI.getNextNode()->getOpcode()) !=
-        InstructionType::LOAD) {
-      printFailure(MI, "expected next instruction to be a load instruction");
-      return false;
-    }
     Type *Ty = getDefaultType(C, *MI.getNextNode());
     RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(Ty, Load, Val);
   } else {
