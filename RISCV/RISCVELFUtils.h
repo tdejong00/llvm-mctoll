@@ -51,8 +51,8 @@ public:
   /// of bytes (unsigned chars) using an optional offset to offset the start
   /// of the contents. Returns an empty array if the section is an empty
   /// SectionRef or if the contents of the section are empty.
-  ArrayRef<Byte> getSectionContents(SectionRef Section,
-                                    uint64_t Offset = 0) const;
+  ArrayRef<Byte> getSectionContents(SectionRef Section, uint64_t Offset = 0,
+                                    uint64_t Length = 0) const;
 
   /// Gets the ELF symbol which contains the given offset. If the symbol can
   /// not be found, a default constructed symbol will be returned.

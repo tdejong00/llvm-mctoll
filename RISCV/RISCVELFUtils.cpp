@@ -25,6 +25,8 @@
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstdint>
+#include <vector>
+#include <zconf.h>
 
 using namespace llvm;
 using namespace mctoll;
@@ -54,7 +56,8 @@ SectionRef RISCVELFUtils::getSectionAtOffset(uint64_t Offset,
 }
 
 ArrayRef<Byte> RISCVELFUtils::getSectionContents(SectionRef Section,
-                                                 uint64_t Offset) const {
+                                                 uint64_t Offset,
+                                                 uint64_t Length) const {
   if (Section == SectionRef() || !Section.getContents()) {
     return ArrayRef<Byte>();
   }
@@ -62,7 +65,10 @@ ArrayRef<Byte> RISCVELFUtils::getSectionContents(SectionRef Section,
   StringRef SectionContents =
       unwrapOrError(Section.getContents(), ELFObjectFile->getFileName());
   const unsigned char *Data = SectionContents.bytes_begin() + Offset;
-  uint64_t Length = Section.getSize() - Offset;
+
+  if (Length == 0) {
+    Length = Section.getSize() - Offset;
+  }
 
   return makeArrayRef(Data, Length);
 }
@@ -200,8 +206,8 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
   SectionRef Section = getSectionAtOffset(Offset, SectionName);
   assert(Section != SectionRef() && "section is unexpectedly not found");
 
-  ArrayRef<Byte> SectionContents =
-      getSectionContents(Section, Offset - Section.getAddress());
+  ArrayRef<Byte> SectionContents = getSectionContents(
+      Section, Offset - Section.getAddress(), Symbol.getSize());
 
   assert(!SectionContents.empty() && "section data is unexpectedly empty");
 
@@ -228,33 +234,54 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
     switch (Symbol.getSize()) {
     case 4:
       Ty = Type::getInt32Ty(C);
-      Align = 32;
+      Align = 4;
       break;
     case 2:
       Ty = Type::getInt16Ty(C);
-      Align = 16;
+      Align = 2;
       break;
     case 1:
       Ty = Type::getInt8Ty(C);
-      Align = 8;
+      Align = 1;
       break;
     default:
-      Align = 8;
-      Ty = ArrayType::get(Type::getInt8Ty(C), SectionContents.size());
+      // More than 4 bytes -> must be array or struct
+      IntegerType *ElementType = getDefaultIntType(C);
+      Align = ElementType->getBitWidth() / 8;
+      uint64_t NumElements = SectionContents.size() / Align;
+      Ty = ArrayType::get(ElementType, NumElements);
     }
 
     // Determine initial value
     Constant *Initializer = nullptr;
     if (Ty->isIntegerTy()) {
-      // Convert the array of bytes to a constant
-      uint64_t InitVal = 0, Shift = 0;
+      // Convert the array of bytes to a constant, by combining
+      // the bytes into a 32-bit integer in little-endian format
+      uint32_t InitVal = 0, Shift = 0;
       for (Byte B : SectionContents) {
-        InitVal = (B << Shift) | InitVal;
+        InitVal |= static_cast<uint32_t>(B) << Shift;
         Shift += 8;
       }
       Initializer = ConstantInt::get(Ty, InitVal);
     } else if (Ty->isArrayTy()) {
-      Initializer = ConstantDataArray::get(C, SectionContents);
+      // Determine width of element type
+      ArrayType *ArrayTy = dyn_cast<ArrayType>(Ty);
+      unsigned ElementWidth = ArrayTy->getElementType()->getIntegerBitWidth();
+
+      // Convert the array of bytes to an array of constants, by combining
+      // the bytes into 32-bit integers in little-endian format
+      vector<uint32_t> InitVals;
+      uint32_t InitVal = 0, Shift = 0;
+      for (Byte B : SectionContents) {
+        InitVal |= (static_cast<uint32_t>(B) << Shift);
+        Shift += 8;
+        if (Shift == ElementWidth) {
+          InitVals.push_back(InitVal);
+          InitVal = 0;
+          Shift = 0;
+        }
+      }
+      Initializer = ConstantDataArray::get(C, InitVals);
     }
 
     // Create global variable
