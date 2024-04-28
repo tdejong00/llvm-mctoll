@@ -52,6 +52,22 @@ ConstantInt *RISCV64MachineInstructionUtils::toConstantInt(LLVMContext &C,
                                                            uint64_t V) {
   return ConstantInt::get(getDefaultIntType(C), V);
 }
+ConstantInt *RISCV64MachineInstructionUtils::toGEPIndex(LLVMContext &C,
+                                                        uint64_t Offset) {
+  IntegerType *Ty = getDefaultIntType(C);
+  unsigned Width = Ty->getBitWidth() / 8;
+
+  // Make sure offset is a multiple of Width
+  if (Offset & (Width - 1)) {
+    errs() << "offset " << Offset << " is not aligned to " << Width
+           << " bytes\n";
+    exit(EXIT_FAILURE);
+  }
+
+  uint64_t V = Offset / Width;
+
+  return toConstantInt(C, V);
+}
 
 InstructionType
 RISCV64MachineInstructionUtils::getInstructionType(unsigned Op) {

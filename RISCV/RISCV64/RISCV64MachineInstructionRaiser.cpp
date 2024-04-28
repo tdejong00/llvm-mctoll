@@ -442,7 +442,9 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
   const MachineOperand &MOp1 = MI.getOperand(0);
   assert(MOp1.isReg());
 
-  // Remove unnecessary Shl instructions for array accesses
+  // Remove unnecessary Shl instructions for array accesses, because the 
+  // operands of the GEP instructions represent indices and not number of
+  // bytes.
   if (BinaryOperator *BinOp = dyn_cast<BinaryOperator>(Val)) {
     Value *LHS = BinOp->getOperand(0);
     Value *RHS = BinOp->getOperand(1);
@@ -554,7 +556,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
     GEPOperator *GEPOp = dyn_cast<GEPOperator>(Val);
     if (GEPOp->getSourceElementType()->isArrayTy()) {
       Type *Ty = GEPOp->getSourceElementType();
-      ConstantInt *Index = toConstantInt(C, MOp3.getImm());
+      ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
       Ptr = Builder.CreateInBoundsGEP(Ty, GEPOp, Index);
     } else {
       Ptr = GEPOp;
@@ -563,7 +565,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
     GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Val);
     if (GlobalVar->getValueType()->isArrayTy()) {
       Type *Ty = GlobalVar->getValueType();
-      ConstantInt *Index = toConstantInt(C, MOp3.getImm());
+      ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
       Ptr = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
     } else {
       RegisterValues[MOp1.getReg()] = Builder.CreateAlignedLoad(
@@ -631,7 +633,7 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
     }
     if (isa<GlobalVariable>(ArrayPtr)) {
       GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr);
-      ConstantInt *Index = toConstantInt(C, MOp3.getImm());
+      ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
       Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), GlobalVar,
                                       {Zero, Index});
     }

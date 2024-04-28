@@ -59,6 +59,10 @@ PointerType *getDefaultPtrType(LLVMContext &C);
 
 /// Creates a ConstantInt based on the given value.
 ConstantInt *toConstantInt(LLVMContext &C, uint64_t V);
+/// Creates a ConstantInt representing a GEP index, based on the given pointer
+/// offset (number of bytes). The operands of the GEP instructions represent
+/// indices and not number of bytes.
+ConstantInt *toGEPIndex(LLVMContext &C, uint64_t Offset);
 
 /// Determines the instruction type of the opcode.
 InstructionType getInstructionType(unsigned Op);
@@ -99,7 +103,7 @@ struct BranchInfo {
   std::vector<std::pair<unsigned, const MachineInstr &>> RegisterDefinitions;
   std::vector<std::pair<signed, const MachineInstr &>> StackStores;
 
-  /// Merges the branch info with the current branch info by only taking 
+  /// Merges the branch info with the current branch info by only taking
   /// the register definitions and stack stores that occur in both instances.
   BranchInfo merge(BranchInfo BI) {
     BranchInfo MergedBranchInfo;
