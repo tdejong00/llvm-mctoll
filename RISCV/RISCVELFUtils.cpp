@@ -285,6 +285,12 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
         Shift = 0;
       }
     }
+
+    // If the section was empty, initialize with zeros
+    if (InitVals.empty()) {
+      InitVals = vector<uint32_t>(Symbol.getSize() / Align);
+    }
+
     Initializer = ConstantDataArray::get(C, InitVals);
   }
 
