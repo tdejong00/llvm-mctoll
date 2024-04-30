@@ -519,12 +519,6 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
 
   assert(MOp1.isReg() && MOp2.isReg() && MOp3.isImm());
 
-  Value *Val = getRegOrArgValue(MOp2.getReg());
-  if (MOp2.getReg() != RISCV::X8 && Val == nullptr) {
-    printFailure(MI, "Register value of load instruction not set");
-    return false;
-  }
-
   Value *Ptr = nullptr;
 
   // Load from pointer made for branch value
@@ -550,31 +544,33 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
       Ptr = Builder.CreateInBoundsGEP(ArrayTy, ArrayPtr, {Zero, Index});
     }
   }
-  // Load from array
-  else if (isa<GEPOperator>(Val)) {
-    GEPOperator *GEPOp = dyn_cast<GEPOperator>(Val);
-    if (GEPOp->getSourceElementType()->isArrayTy()) {
-      Type *Ty = GEPOp->getSourceElementType();
-      ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(Ty, GEPOp, Index);
-    } else {
-      Ptr = GEPOp;
-    }
-  } else if (isa<GlobalVariable>(Val)) {
-    GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Val);
-    if (GlobalVar->getValueType()->isArrayTy()) {
-      Type *Ty = GlobalVar->getValueType();
-      ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
-    } else {
-      RegisterValues[MOp1.getReg()] = Builder.CreateAlignedLoad(
-          GlobalVar->getValueType(), GlobalVar, GlobalVar->getAlign());
-      return true;
-    }
-  }
   // Load from address specified in register
   else if (MOp3.getImm() == 0) {
-    Ptr = Val;
+    Ptr = getRegOrArgValue(MOp2.getReg());
+  }
+  // Load from array
+  else {
+    Value *ArrayPtr = getRegOrArgValue(MOp2.getReg());
+    if (ArrayPtr == nullptr) {
+      printFailure(MI, "Array pointer of store instruction not set");
+      return false;
+    }
+
+    // Determine type for GEP
+    if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(ArrayPtr)) {
+      ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
+      Ptr = Builder.CreateInBoundsGEP(GEPOp->getSourceElementType(), ArrayPtr,
+                                      {Zero, Index});
+    } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr)) {
+      ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
+      Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), ArrayPtr,
+                                      {Zero, Index});
+    } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
+      ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
+      Ptr = Builder.CreateInBoundsGEP(Load->getPointerOperandType(), Load, Index);
+    } else {
+      Ptr = ArrayPtr;
+    }
   }
 
   if (Ptr == nullptr) {
@@ -630,11 +626,21 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
       printFailure(MI, "Array pointer of store instruction not set");
       return false;
     }
-    if (isa<GlobalVariable>(ArrayPtr)) {
-      GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr);
+    
+    // Determine type for GEP
+    if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(ArrayPtr)) {
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), GlobalVar,
+      Ptr = Builder.CreateInBoundsGEP(GEPOp->getSourceElementType(), ArrayPtr,
                                       {Zero, Index});
+    } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr)) {
+      ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
+      Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), ArrayPtr,
+                                      {Zero, Index});
+    } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
+      ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
+      Ptr = Builder.CreateInBoundsGEP(Load->getPointerOperandType(), Load, Index);
+    } else {
+      Ptr = ArrayPtr;
     }
   }
 
