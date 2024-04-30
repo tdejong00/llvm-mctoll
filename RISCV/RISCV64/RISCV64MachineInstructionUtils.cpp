@@ -48,11 +48,6 @@ PointerType *RISCV64MachineInstructionUtils::getDefaultPtrType(LLVMContext &C) {
   return Type::getInt64PtrTy(C);
 }
 
-ConstantInt *RISCV64MachineInstructionUtils::toConstantInt(LLVMContext &C,
-                                                           uint64_t V) {
-  return ConstantInt::get(getDefaultIntType(C), V);
-}
-
 ConstantInt *RISCV64MachineInstructionUtils::toGEPIndex(LLVMContext &C,
                                                         uint64_t Offset) {
   IntegerType *Ty = getDefaultIntType(C);
@@ -67,7 +62,7 @@ ConstantInt *RISCV64MachineInstructionUtils::toGEPIndex(LLVMContext &C,
 
   uint64_t V = Offset / Width;
 
-  return toConstantInt(C, V);
+  return ConstantInt::get(getDefaultIntType(C), V);
 }
 
 InstructionType

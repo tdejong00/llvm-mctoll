@@ -67,13 +67,13 @@ public:
   Function *getFunctionAtOffset(uint64_t Offset) const;
 
   /// Gets the value located in the .rodata ELF section at the given offset
-  /// and creates a corresponding global variable. The given upper bound will
+  /// and creates a corresponding global variable. The given index will
   /// be set to start of the desired value inside the global variable, which is
   /// calculated as the given offset minus the address of the found section.
   /// Returns null when the section could not be found or the contens of the
   /// section are empty.
   GlobalVariable *getRODataValueAtOffset(uint64_t Offset,
-                                         Value *&UpperBound) const;
+                                         Value *&Index) const;
 
   /// Gets the value located in the .data ELF section at the given offset
   /// and creates a corresponding global variable.

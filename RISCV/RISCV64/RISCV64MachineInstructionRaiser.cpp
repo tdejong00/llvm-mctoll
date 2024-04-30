@@ -125,7 +125,7 @@ RISCV64MachineInstructionRaiser::RISCV64MachineInstructionRaiser(
     : MachineInstructionRaiser(MF, MR, MCIR), C(MF.getFunction().getContext()),
       MCIR(MCIR), FunctionPrototypeDiscoverer(MF), ELFUtils(MR, C) {
   // Initialize hardwired zero register
-  Zero = toConstantInt(C, 0);
+  Zero = ConstantInt::get(getDefaultIntType(C), 0);
   RegisterValues[RISCV::X0] = Zero;
 }
 
@@ -322,7 +322,7 @@ RISCV64MachineInstructionRaiser::getRegOrImmValue(const MachineOperand &MOp) {
     return getRegOrArgValue(MOp.getReg());
   }
 
-  return toConstantInt(C, MOp.getImm());
+  return ConstantInt::get(getDefaultIntType(C), MOp.getImm());
 }
 
 bool RISCV64MachineInstructionRaiser::raiseNonTerminatorInstruction(
@@ -539,7 +539,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
       }
 
       Type *ArrayTy = ArrayType::get(Type::getInt8Ty(C), 8);
-      ConstantInt *Index = toConstantInt(C, 4);
+      ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), 4);
       Ptr = Builder.CreateInBoundsGEP(ArrayTy, ArrayPtr, {Zero, Index});
     }
   }
@@ -566,7 +566,8 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
                                       {Zero, Index});
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(Load->getPointerOperandType(), Load, Index);
+      Ptr =
+          Builder.CreateInBoundsGEP(Load->getPointerOperandType(), Load, Index);
     } else {
       Ptr = ArrayPtr;
     }
@@ -625,7 +626,7 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
       printFailure(MI, "Array pointer of store instruction not set");
       return false;
     }
-    
+
     // Determine type for GEP
     if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(ArrayPtr)) {
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
@@ -637,7 +638,8 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
                                       {Zero, Index});
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(Load->getPointerOperandType(), Load, Index);
+      Ptr =
+          Builder.CreateInBoundsGEP(Load->getPointerOperandType(), Load, Index);
     } else {
       Ptr = ArrayPtr;
     }
@@ -680,15 +682,14 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
 
   // First attempt .rodata
   uint64_t RODataOffset = InstOffset + TextOffset + ValueOffset;
-  Value *LowerBound = Zero;
-  Value *UpperBound = nullptr;
+  Value *Index = nullptr;
   GlobalVariable *GlobalVar =
-      ELFUtils.getRODataValueAtOffset(RODataOffset, UpperBound);
+      ELFUtils.getRODataValueAtOffset(RODataOffset, Index);
 
   // Found in .rodata, create getelementptr instruction
   if (GlobalVar != nullptr) {
     RegisterValues[ADDIMOp1.getReg()] = Builder.CreateInBoundsGEP(
-        GlobalVar->getValueType(), GlobalVar, {LowerBound, UpperBound});
+        GlobalVar->getValueType(), GlobalVar, {Zero, Index});
     return true;
   }
 
@@ -779,6 +780,11 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
 
     if (RetVal == nullptr) {
       printFailure(MI, "Register value of return instruction not set");
+      return false;
+    }
+
+    if (RetVal->getType() != RetTy) {
+      printFailure(MI, "Type does not match return type");
       return false;
     }
 

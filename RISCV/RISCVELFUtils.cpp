@@ -21,7 +21,6 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
@@ -164,9 +163,8 @@ Function *RISCVELFUtils::getFunctionAtOffset(uint64_t Offset) const {
   return CalledFunction;
 }
 
-GlobalVariable *
-RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
-                                      Value *&UpperBound) const {
+GlobalVariable *RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
+                                                      Value *&Index) const {
   const std::string SectionName = ".rodata";
 
   SectionRef Section = getSectionAtOffset(Offset, SectionName);
@@ -193,7 +191,7 @@ RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
     GlobalVar->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
   }
 
-  UpperBound = toConstantInt(C, Offset - Section.getAddress());
+  Index = ConstantInt::get(getDefaultIntType(C), Offset - Section.getAddress());
 
   return GlobalVar;
 }

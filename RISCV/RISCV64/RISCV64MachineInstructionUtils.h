@@ -57,8 +57,6 @@ IntegerType *getDefaultIntType(LLVMContext &C);
 /// Gets the default pointer type using the given LLVM context.
 PointerType *getDefaultPtrType(LLVMContext &C);
 
-/// Creates a ConstantInt based on the given value.
-ConstantInt *toConstantInt(LLVMContext &C, uint64_t V);
 /// Creates a ConstantInt representing a GEP index, based on the given pointer
 /// offset (number of bytes). The operands of the GEP instructions represent
 /// indices and not number of bytes.
