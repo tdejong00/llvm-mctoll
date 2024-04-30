@@ -744,7 +744,12 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
 
   // Check if arguments are of correct type
   for (unsigned I = 0; I < CalledFunctionType->getNumParams(); I++) {
-    if (Args[I]->getType() != CalledFunctionType->getParamType(I)) {
+    Type *ArgTy = Args[I]->getType();
+    Type *ParamTy = CalledFunctionType->getParamType(I);
+    // Coerce type of function signature for integer types
+    if (ArgTy != ParamTy && ArgTy->isIntegerTy() && ParamTy->isIntegerTy()) {
+      Args[I]->mutateType(ParamTy);
+    } else if (ArgTy != ParamTy) {
       printFailure(MI, "Argument type of argument '" + std::to_string(I) +
                            "' does not match prototype");
       return false;

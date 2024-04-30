@@ -52,6 +52,7 @@ ConstantInt *RISCV64MachineInstructionUtils::toConstantInt(LLVMContext &C,
                                                            uint64_t V) {
   return ConstantInt::get(getDefaultIntType(C), V);
 }
+
 ConstantInt *RISCV64MachineInstructionUtils::toGEPIndex(LLVMContext &C,
                                                         uint64_t Offset) {
   IntegerType *Ty = getDefaultIntType(C);
