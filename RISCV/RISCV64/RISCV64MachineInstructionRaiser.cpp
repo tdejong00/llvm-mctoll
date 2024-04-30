@@ -848,6 +848,17 @@ bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
     return false;
   }
 
+  // Convert RHS to nullptr when comparison between pointer and zero
+  if (LHS->getType()->isPointerTy() && RHS == Zero) {
+    RHS = ConstantPointerNull::get(dyn_cast<PointerType>(LHS->getType()));
+  }
+
+  // Check if types are equal
+  if (LHS->getType() != RHS->getType()) {
+    printFailure(MI, "Type mismatch for comparison instruction");
+    return false;
+  }
+
   // Create compare instruction
   Value *Cond = Builder.CreateCmp(Pred, LHS, RHS);
 
