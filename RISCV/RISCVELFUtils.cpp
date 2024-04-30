@@ -21,6 +21,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
@@ -208,6 +209,7 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
     return GlobalVar;
   }
 
+  // Get section contents
   const std::string SectionName = ".data";
   SectionRef Section = getSectionAtOffset(Offset, SectionName);
   ArrayRef<Byte> SectionContents;
@@ -250,7 +252,7 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
     // More than 4 bytes -> must be array or struct
     IntegerType *ElementType = getDefaultIntType(C);
     Align = ElementType->getBitWidth() / 8;
-    uint64_t NumElements = SectionContents.size() / Align;
+    uint64_t NumElements = Symbol.getSize() / Align;
     Ty = ArrayType::get(ElementType, NumElements);
   }
 

@@ -194,7 +194,6 @@ bool RISCV64MachineInstructionRaiser::raise() {
             IRBuilder<> Builder(BB);
             for (auto StackStore : MergedBranchInfo.StackStores) {
               Type *Ty = getDefaultType(C, StackStore.second);
-              MI.dump();
               BranchStackValues[StackStore.first] = Builder.CreateAlloca(Ty);
             }
             // Only consider register definitions if there
