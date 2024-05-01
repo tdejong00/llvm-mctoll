@@ -19,6 +19,7 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/IR/CallingConv.h"
+#include <cassert>
 
 using namespace llvm;
 using namespace llvm::mctoll;
@@ -59,32 +60,44 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
     // block if no call instruction is present.
     auto DefineIt = findInstructionByRegNo(MBB, RISCV::X10, CallIt);
 
-    if (DefineIt != CallIt) {
-      // Check if pointer return type
-      const MachineOperand &MOp = DefineIt->getOperand(1);
-      if (MOp.isReg()) {
-        for (; DefineIt != CallIt; ++DefineIt) {
-          const MachineInstr *Prev = DefineIt->getPrevNode();
-          const MachineInstr *Next = DefineIt->getNextNode();
-          if (!Prev || !Next) {
-            continue;
-          }
+    // Return value not defined
+    if (DefineIt == CallIt) {
+      continue;
+    }
 
-          // Check for auipc instruction, which is not loaded from,
-          // so an add instruction which is preceeded by an auipc, but
-          // not subceeded by a load instruction
-          if (DefineIt->definesRegister(MOp.getReg()) &&
-              Prev->getOpcode() == RISCV::AUIPC &&
-              isAddI(DefineIt->getOpcode()) &&
-              getInstructionType(Next->getOpcode()) != InstructionType::LOAD) {
-            return getDefaultPtrType(C);
-          }
-        }
+    const MachineOperand &MOp2 = DefineIt->getOperand(1);
+    assert(DefineIt->getOpcode() == RISCV::C_MV && MOp2.isReg());
+
+    // Determine if pointer type based on the instruction which defines
+    // the register whose contents are moved to the return register. 
+    for (; DefineIt != CallIt; ++DefineIt) {
+      const MachineInstr *Prev = DefineIt->getPrevNode();
+      const MachineInstr *Next = DefineIt->getNextNode();
+      if (!Prev || !Next) {
+        continue;
       }
 
-      // Assume integer return type
-      return getDefaultIntType(C);
+      if (DefineIt->definesRegister(MOp2.getReg())) {
+        // Defining instruction loads a pointer
+        if (DefineIt->getOpcode() == RISCV::LD ||
+            DefineIt->getOpcode() == RISCV::C_LD) {
+          return getDefaultPtrType(C);
+        }
+
+        // Defining instruction loads a global variable pointer
+        if (Prev->getOpcode() == RISCV::AUIPC &&
+            isAddI(DefineIt->getOpcode()) &&
+            getInstructionType(Next->getOpcode()) != InstructionType::LOAD) {
+          return getDefaultPtrType(C);
+        }
+
+        // Defining instruction does not load a pointer
+        break;
+      }
     }
+
+    // Assume integer return type by default
+    return getDefaultIntType(C);
   }
 
   return Ty;
