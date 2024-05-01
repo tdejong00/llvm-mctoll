@@ -630,11 +630,11 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
     // Determine type for GEP
     if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(ArrayPtr)) {
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(GEPOp->getSourceElementType(), ArrayPtr,
+      Ptr = Builder.CreateInBoundsGEP(GEPOp->getSourceElementType(), GEPOp,
                                       {Zero, Index});
     } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr)) {
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), ArrayPtr,
+      Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), GlobalVar,
                                       {Zero, Index});
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
@@ -648,6 +648,11 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
   if (Ptr == nullptr) {
     printFailure(MI, "Pointer of store instruction not set");
     return false;
+  }
+
+  // Convert zero immediates to nullptr when storing a pointer
+  if ((MI.getOpcode() == RISCV::SD) && Val == Zero) {
+    Val = ConstantPointerNull::get(getDefaultPtrType(C));
   }
 
   Builder.CreateStore(Val, Ptr);
