@@ -753,8 +753,10 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
     Type *ArgTy = Args[I]->getType();
     Type *ParamTy = CalledFunctionType->getParamType(I);
     // Coerce type of function signature for integer types
-    if (ArgTy != ParamTy && ArgTy->isIntegerTy() && ParamTy->isIntegerTy()) {
-      Args[I]->mutateType(ParamTy);
+    if (ArgTy != ParamTy && ArgTy->isIntegerTy() && ParamTy->isIntegerTy() &&
+        isa<ConstantInt>(Args[I])) {
+      ConstantInt *CI = dyn_cast<ConstantInt>(Args[I]);
+      Args[I] = ConstantInt::get(ParamTy, CI->getValue().getZExtValue());
     } else if (ArgTy != ParamTy) {
       printFailure(MI, "Argument type of argument '" + std::to_string(I) +
                            "' does not match prototype");
