@@ -425,6 +425,11 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
     return false;
   }
 
+  if (LHS->getType()->isPointerTy() && RHS->getType()->isPointerTy()) {
+    printFailure(MI, "Binary operation not allowed for pointer types");
+    return false;
+  }
+
   RegisterValues[MOp1.getReg()] = Builder.CreateBinOp(BinOp, LHS, RHS);
 
   // If the register is a branch value, also store to that pointer
@@ -579,6 +584,11 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   }
 
   Type *Ty = getDefaultType(C, MI);
+  // When loading from stack, use the allocated type
+  if (MOp2.getReg() == RISCV::X8) {
+    AllocaInst *Alloca = dyn_cast<AllocaInst>(Ptr);
+    Ty = Alloca->getAllocatedType();
+  }
   RegisterValues[MOp1.getReg()] = Builder.CreateLoad(Ty, Ptr);
 
   return true;
@@ -611,8 +621,7 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
     Ptr = StackValues[MOp3.getImm()];
     // Check if already allocated, allocate if not
     if (Ptr == nullptr) {
-      Type *Ty = getDefaultType(C, MI);
-      Ptr = StackValues[MOp3.getImm()] = Builder.CreateAlloca(Ty);
+      Ptr = StackValues[MOp3.getImm()] = Builder.CreateAlloca(Val->getType());
     }
   }
   // Store to address specified in register
@@ -869,6 +878,11 @@ bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
   // Convert RHS to nullptr when comparison between pointer and zero
   if (LHS->getType()->isPointerTy() && RHS == Zero) {
     RHS = ConstantPointerNull::get(dyn_cast<PointerType>(LHS->getType()));
+  }
+  // Coerce type of zero constant to type of LHS
+  else if (LHS->getType()->isIntegerTy() && RHS == Zero &&
+           LHS->getType() != RHS->getType()) {
+    RHS = ConstantInt::get(LHS->getType(), 0);
   }
 
   // Check if types are equal

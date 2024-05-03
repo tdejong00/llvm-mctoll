@@ -35,7 +35,7 @@ Type *RISCV64MachineInstructionUtils::getDefaultType(LLVMContext &C,
                                                      const MachineInstr &MI) {
   if (MI.getOpcode() == RISCV::LD || MI.getOpcode() == RISCV::C_LD ||
       MI.getOpcode() == RISCV::SD || MI.getOpcode() == RISCV::C_SD) {
-    return getDefaultPtrType(C);
+    return Type::getInt64Ty(C);
   }
   return getDefaultIntType(C);
 }
