@@ -16,6 +16,7 @@
 
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
@@ -81,6 +82,11 @@ bool isEpilogInstruction(const MachineInstr &MI);
 /// after the prolog of the machine basic block.
 MachineBasicBlock::const_instr_iterator
 skipProlog(const MachineBasicBlock &MBB);
+
+/// Determines if the register defined by the given machine instruction
+/// is the final definition of that register within the machine basic block
+/// which the machine instruction resides in.
+bool isFinalDefinition(const MachineInstr &MI);
 
 /// Finds the instruction in the machine basic block which has
 /// the given opcode. Only searches up until the given end iterator.

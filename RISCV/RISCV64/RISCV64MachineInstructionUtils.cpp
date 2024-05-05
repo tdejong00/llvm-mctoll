@@ -22,6 +22,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/Debug.h"
 #include <algorithm>
 #include <cassert>
 
@@ -220,20 +221,8 @@ bool RISCV64MachineInstructionUtils::isPrologInstruction(
            MI.getOperand(0).getReg() == RISCV::X8 && MI.getOperand(1).isReg() &&
            MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm();
   };
-  auto IsStoreFramePointerInstruction = [](const MachineInstr &MI) {
-    return MI.getOpcode() == RISCV::C_SDSP && MI.getOperand(0).isReg() &&
-           MI.getOperand(0).getReg() == RISCV::X8 && MI.getOperand(1).isReg() &&
-           MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm();
-  };
-  auto IsStoreReturnAddressInstruction = [](const MachineInstr &MI) {
-    return MI.getOpcode() == RISCV::C_SDSP && MI.getOperand(0).isReg() &&
-           MI.getOperand(0).getReg() == RISCV::X1 && MI.getOperand(1).isReg() &&
-           MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm();
-  };
   return IsAdjustStackPointerInstruction(MI) ||
-         IsAdjustFramePointerInstruction(MI) ||
-         IsStoreFramePointerInstruction(MI) ||
-         IsStoreReturnAddressInstruction(MI);
+         IsAdjustFramePointerInstruction(MI) || MI.getOpcode() == RISCV::C_SDSP;
 }
 
 bool RISCV64MachineInstructionUtils::isEpilogInstruction(
@@ -248,19 +237,7 @@ bool RISCV64MachineInstructionUtils::isEpilogInstruction(
            MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm() &&
            MI.getOperand(2).getImm() > 0;
   };
-  auto IsLoadFramePointerInstruction = [](const MachineInstr &MI) {
-    return MI.getOpcode() == RISCV::C_LDSP && MI.getOperand(0).isReg() &&
-           MI.getOperand(0).getReg() == RISCV::X8 && MI.getOperand(1).isReg() &&
-           MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm();
-  };
-  auto IsLoadReturnAddressInstruction = [](const MachineInstr &MI) {
-    return MI.getOpcode() == RISCV::C_LDSP && MI.getOperand(0).isReg() &&
-           MI.getOperand(0).getReg() == RISCV::X1 && MI.getOperand(1).isReg() &&
-           MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm();
-  };
-  return IsAdjustStackPointerInstruction(MI) ||
-         IsLoadFramePointerInstruction(MI) ||
-         IsLoadReturnAddressInstruction(MI);
+  return IsAdjustStackPointerInstruction(MI) || MI.getOpcode() == RISCV::C_LDSP;
 }
 
 MachineBasicBlock::const_instr_iterator
@@ -270,6 +247,21 @@ RISCV64MachineInstructionUtils::skipProlog(const MachineBasicBlock &MBB) {
     ++It;
   }
   return It;
+}
+
+bool RISCV64MachineInstructionUtils::isFinalDefinition(const MachineInstr &MI) {
+  const MachineOperand &MOp1 = MI.getOperand(0);
+  assert(MOp1.isReg());
+
+  // Loop from next instruction to end of machine basic block and
+  // check if any other instruction defines the register
+  const MachineBasicBlock *MBB = MI.getParent();
+  for (auto It = ++MI.getIterator(); It != MBB->instr_end(); ++It) {
+    if (It->definesRegister(MOp1.getReg())) {
+      return false;
+    }
+  }
+  return true;
 }
 
 MachineBasicBlock::const_reverse_instr_iterator

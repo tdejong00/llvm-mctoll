@@ -195,6 +195,7 @@ bool RISCV64MachineInstructionRaiser::raise() {
             for (auto StackStore : MergedBranchInfo.StackStores) {
               Type *Ty = getDefaultType(C, StackStore.second);
               BranchStackValues[StackStore.first] = Builder.CreateAlloca(Ty);
+              BranchStackValues[StackStore.first]->dump();
             }
             // Only consider register definitions if there
             // are no stores which both branches have made
@@ -433,7 +434,7 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
   RegisterValues[MOp1.getReg()] = Builder.CreateBinOp(BinOp, LHS, RHS);
 
   // If the register is a branch value, also store to that pointer
-  if (BranchRegisterValues[MOp1.getReg()] != nullptr) {
+  if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
     Builder.CreateStore(RegisterValues[MOp1.getReg()],
                         BranchRegisterValues[MOp1.getReg()]);
   }
@@ -492,8 +493,10 @@ bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
 
   Value *Val = getRegOrImmValue(MOp2);
 
-  // If the register is a branch value, load from that pointer instead
-  if (MOp2.isReg() && BranchRegisterValues[MOp2.getReg()] != nullptr) {
+  // If the register is a branch value and basic block is not an immediate
+  // successor of the entry block, load from that pointer instead.
+  if (MOp2.isReg() && BranchRegisterValues[MOp2.getReg()] != nullptr &&
+      !MF.begin()->isSuccessor(MI.getParent())) {
     Type *Ty = getDefaultType(C, MI);
     Val = Builder.CreateLoad(Ty, BranchRegisterValues[MOp2.getReg()]);
   }
@@ -506,7 +509,7 @@ bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
   RegisterValues[MOp1.getReg()] = Val;
 
   // If the register is a branch value, also store to that pointer
-  if (BranchRegisterValues[MOp1.getReg()] != nullptr) {
+  if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
     Builder.CreateStore(Val, BranchRegisterValues[MOp1.getReg()]);
   }
 
@@ -589,7 +592,14 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
     AllocaInst *Alloca = dyn_cast<AllocaInst>(Ptr);
     Ty = Alloca->getAllocatedType();
   }
+
   RegisterValues[MOp1.getReg()] = Builder.CreateLoad(Ty, Ptr);
+
+  // If the register is a branch value, also store to that pointer
+  if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
+    Builder.CreateStore(RegisterValues[MOp1.getReg()],
+                        BranchRegisterValues[MOp1.getReg()]);
+  }
 
   return true;
 }

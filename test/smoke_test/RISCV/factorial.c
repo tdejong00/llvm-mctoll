@@ -3,10 +3,12 @@
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
 // CHECK: factorial(5) = 120
+// CHECK: factorial(7) = 5040
+// CHECK: factorial(9) = 362880
 
 #include <stdio.h>
 
-int factorial(int N) {
+unsigned long long factorial(unsigned N) {
     if (N == 0) {
         return 1;
     }
@@ -14,7 +16,8 @@ int factorial(int N) {
 }
 
 int main(void) {
-    int F = factorial(5);
-    printf("factorial(5) = %d\n", F);
+    printf("factorial(5) = %llu\n", factorial(5));
+    printf("factorial(7) = %llu\n", factorial(7));
+    printf("factorial(9) = %llu\n", factorial(9));
     return 0;
 }
