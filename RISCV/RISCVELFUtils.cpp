@@ -25,6 +25,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 #include <zconf.h>
 
@@ -158,6 +159,9 @@ Function *RISCVELFUtils::getFunctionAtOffset(uint64_t Offset) const {
   if (CalledFunction == nullptr) {
     CalledFunction = IncludedFileInfo::CreateFunction(
         SymbolName, *const_cast<ModuleRaiser *>(MR));
+    if (CalledFunction == nullptr) {
+      exit(EXIT_FAILURE);
+    }
   }
 
   return CalledFunction;
