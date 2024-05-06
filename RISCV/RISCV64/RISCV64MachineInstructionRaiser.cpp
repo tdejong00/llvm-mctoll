@@ -130,10 +130,19 @@ RISCV64MachineInstructionRaiser::RISCV64MachineInstructionRaiser(
 }
 
 bool RISCV64MachineInstructionRaiser::raise() {
+  LoopTraversal Traversal;
+  LoopTraversal::TraversalOrder TraversalOrder = Traversal.traverse(MF);
+
   // Traverse basic blocks of machine function and raise all non-terminators
-  for (const MachineBasicBlock &MBB : MF) {
+  for (LoopTraversal::TraversedMBBInfo MBBInfo : TraversalOrder) {
+    // Only process basic blocks once
+    if (!MBBInfo.PrimaryPass) {
+      continue;
+    }
+
+    const MachineBasicBlock *MBB = MBBInfo.MBB;
     // Reset branch values
-    if (MBB.isEntryBlock()) {
+    if (MBB->isEntryBlock()) {
       BranchRegisterValues.clear();
       BranchStackValues.clear();
     }
@@ -142,10 +151,10 @@ bool RISCV64MachineInstructionRaiser::raise() {
     BasicBlock *BB = BasicBlock::Create(C, "", RaisedFunction);
 
     // Store basic block for future reference
-    BasicBlocks[MBB.getNumber()] = BB;
+    BasicBlocks[MBB->getNumber()] = BB;
 
     // Loop over machine instructions of basic block and raise each instruction.
-    for (const MachineInstr &MI : MBB.instrs()) {
+    for (const MachineInstr &MI : MBB->instrs()) {
       bool WasAUIPC = MI.getPrevNode() != nullptr &&
                       MI.getPrevNode()->getOpcode() == RISCV::AUIPC;
 
@@ -180,12 +189,12 @@ bool RISCV64MachineInstructionRaiser::raise() {
         // allocation for each register/stack offset which both branches
         // define/store to. This pointer will then be used in subsequent
         // instruction which load/store from that register/stack offset.
-        if (MBB.succ_size() == 2) {
-          MachineBasicBlock *SuccMBB1 = *MBB.succ_begin();
-          MachineBasicBlock *SuccMBB2 = *(MBB.succ_begin()++);
+        if (MBB->succ_size() == 2) {
+          MachineBasicBlock *SuccMBB1 = *MBB->succ_begin();
+          MachineBasicBlock *SuccMBB2 = *(MBB->succ_begin()++);
 
           // Only consider non-looping branches
-          if (!MBB.isPredecessor(SuccMBB1) && !MBB.isPredecessor(SuccMBB2)) {
+          if (!MBB->isPredecessor(SuccMBB1) && !MBB->isPredecessor(SuccMBB2)) {
             BranchInfo BranchInfo1 = constructBranchInfo(SuccMBB1);
             BranchInfo BranchInfo2 = constructBranchInfo(SuccMBB2);
 
@@ -195,7 +204,6 @@ bool RISCV64MachineInstructionRaiser::raise() {
             for (auto StackStore : MergedBranchInfo.StackStores) {
               Type *Ty = getDefaultType(C, StackStore.second);
               BranchStackValues[StackStore.first] = Builder.CreateAlloca(Ty);
-              BranchStackValues[StackStore.first]->dump();
             }
             // Only consider register definitions if there
             // are no stores which both branches have made
