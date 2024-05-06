@@ -299,7 +299,7 @@ BranchInfo RISCV64MachineInstructionUtils::constructBranchInfo(
     }
     // For now, only check if instruction defines register x15/a5
     else if (MI.definesRegister(RISCV::X15)) {
-      BI.RegisterDefinitions.emplace_back(RISCV::X15, MI);
+      BI.RegDefs.emplace_back(RISCV::X15, MI);
     }
   }
   return BI;

@@ -104,7 +104,7 @@ findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned RegNo,
 /// and which stack offsets are stored in a branch.
 struct BranchInfo {
 
-  std::vector<std::pair<unsigned, const MachineInstr &>> RegisterDefinitions;
+  std::vector<std::pair<unsigned, const MachineInstr &>> RegDefs;
   std::vector<std::pair<signed, const MachineInstr &>> StackStores;
 
   /// Merges the branch info with the current branch info by only taking
@@ -113,15 +113,15 @@ struct BranchInfo {
     BranchInfo MergedBranchInfo;
 
     // Merge register definitions
-    for (auto OtherDefinition : BI.RegisterDefinitions) {
+    for (auto OtherDef : BI.RegDefs) {
       auto It = std::find_if(
-          RegisterDefinitions.begin(), RegisterDefinitions.end(),
-          [&OtherDefinition](
-              std::pair<unsigned, const MachineInstr &> RegisterDefinition) {
-            return RegisterDefinition.first == OtherDefinition.first;
+          RegDefs.begin(), RegDefs.end(),
+          [&OtherDef](
+              std::pair<unsigned, const MachineInstr &> RegDef) {
+            return RegDef.first == OtherDef.first;
           });
-      if (It != RegisterDefinitions.end()) {
-        MergedBranchInfo.RegisterDefinitions.push_back(OtherDefinition);
+      if (It != RegDefs.end()) {
+        MergedBranchInfo.RegDefs.push_back(OtherDef);
       }
     }
 

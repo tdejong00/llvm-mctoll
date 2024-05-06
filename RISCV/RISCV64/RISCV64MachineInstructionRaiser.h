@@ -17,6 +17,7 @@
 #include "MCInstRaiser.h"
 #include "RISCV64/RISCV64FunctionPrototypeDiscoverer.h"
 #include "RISCV64/RISCV64MachineInstructionUtils.h"
+#include "RISCV64ValueTracker.h"
 #include "RISCVELFUtils.h"
 #include "Raiser/MachineInstructionRaiser.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -165,18 +166,13 @@ private:
   MCInstRaiser *MCIR;
 
   RISCV64FunctionPrototypeDiscoverer FunctionPrototypeDiscoverer;
+  RISCV64ValueTracker ValueTracker;
   RISCVELFUtils ELFUtils;
 
   ConstantInt *Zero;
 
   /// A map from a MBB number to the corresponding BB.
   std::unordered_map<int, BasicBlock *> BasicBlocks;
-
-  /// A map from a register number to the value stored in that register.
-  std::unordered_map<unsigned, Value *> RegisterValues;
-
-  /// A map from a stack offset to the value located at that address.
-  std::unordered_map<signed, Value *> StackValues;
 
   /// A map from a register number to a pointer value from which should
   /// be loaded/stored instead of the register value in the case of a branch

@@ -19,6 +19,7 @@
 #include "ModuleRaiser.h"
 #include "RISCV64FunctionPrototypeDiscoverer.h"
 #include "RISCV64MachineInstructionUtils.h"
+#include "RISCV64ValueTracker.h"
 #include "RISCVELFUtils.h"
 #include "RISCVModuleRaiser.h"
 #include "Raiser/MachineFunctionRaiser.h"
@@ -126,7 +127,7 @@ RISCV64MachineInstructionRaiser::RISCV64MachineInstructionRaiser(
       MCIR(MCIR), FunctionPrototypeDiscoverer(MF), ELFUtils(MR, C) {
   // Initialize hardwired zero register
   Zero = ConstantInt::get(getDefaultIntType(C), 0);
-  RegisterValues[RISCV::X0] = Zero;
+  ValueTracker.setRegValue(RISCV::X0, Zero);
 }
 
 bool RISCV64MachineInstructionRaiser::raise() {
@@ -208,14 +209,12 @@ bool RISCV64MachineInstructionRaiser::raise() {
             // Only consider register definitions if there
             // are no stores which both branches have made
             if (MergedBranchInfo.StackStores.empty()) {
-              for (auto RegisterDefinition :
-                   MergedBranchInfo.RegisterDefinitions) {
-                if (BranchRegisterValues[RegisterDefinition.first] != nullptr) {
+              for (auto RegDef : MergedBranchInfo.RegDefs) {
+                if (BranchRegisterValues[RegDef.first] != nullptr) {
                   continue;
                 }
-                Type *Ty = getDefaultType(C, RegisterDefinition.second);
-                BranchRegisterValues[RegisterDefinition.first] =
-                    Builder.CreateAlloca(Ty);
+                Type *Ty = getDefaultType(C, RegDef.second);
+                BranchRegisterValues[RegDef.first] = Builder.CreateAlloca(Ty);
               }
             }
           }
@@ -228,7 +227,8 @@ bool RISCV64MachineInstructionRaiser::raise() {
         for (unsigned I = 0; I < MI.getNumOperands(); I++) {
           const MachineOperand &MOp = MI.getOperand(I);
           if (MOp.isReg()) {
-            Info->RegValues.push_back(RegisterValues[MOp.getReg()]);
+            Value *RegValue = ValueTracker.getRegValue(MOp.getReg());
+            Info->RegValues.push_back(RegValue);
           } else {
             Info->RegValues.push_back(nullptr);
           }
@@ -310,7 +310,7 @@ int RISCV64MachineInstructionRaiser::getArgumentNumber(unsigned PReg) {
 
 Value *RISCV64MachineInstructionRaiser::getRegOrArgValue(unsigned PReg,
                                                          int MBBNo = 0) {
-  Value *Val = RegisterValues[PReg];
+  Value *Val = ValueTracker.getRegValue(PReg);
 
   int ArgNo = getArgumentNumber(PReg);
   int NumArgs = RaisedFunction->getFunctionType()->getNumParams();
@@ -406,7 +406,8 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
 
   // Instructions like `addi s0,$` should load value at stack offset
   if (BinOp == BinaryOps::Add && MOp2.getReg() == RISCV::X8 && MOp3.isImm()) {
-    RegisterValues[MOp1.getReg()] = StackValues[MOp3.getImm()];
+    Value *StackValue = ValueTracker.getStackValue(MOp3.getImm());
+    ValueTracker.setRegValue(MOp1.getReg(), StackValue);
     return true;
   }
 
@@ -439,12 +440,12 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
     return false;
   }
 
-  RegisterValues[MOp1.getReg()] = Builder.CreateBinOp(BinOp, LHS, RHS);
+  Value *Val = Builder.CreateBinOp(BinOp, LHS, RHS);
+  ValueTracker.setRegValue(MOp1.getReg(), Val);
 
   // If the register is a branch value, also store to that pointer
   if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
-    Builder.CreateStore(RegisterValues[MOp1.getReg()],
-                        BranchRegisterValues[MOp1.getReg()]);
+    Builder.CreateStore(Val, BranchRegisterValues[MOp1.getReg()]);
   }
 
   return true;
@@ -472,20 +473,23 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
     }
   }
 
+  // Create GEP instruction
+  Value *GEP = nullptr;
   if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Ptr)) {
     Type *Ty = getDefaultType(C, *MI.getNextNode());
-    RegisterValues[MOp1.getReg()] =
-        Builder.CreateInBoundsGEP(Ty, GlobalVar, Val);
+    GEP = Builder.CreateInBoundsGEP(Ty, GlobalVar, Val);
   } else if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(Ptr)) {
     Type *Ty = GEPOp->getResultElementType();
-    RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(Ty, GEPOp, Val);
+    GEP = Builder.CreateInBoundsGEP(Ty, GEPOp, Val);
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Ptr)) {
     Type *Ty = getDefaultType(C, *MI.getNextNode());
-    RegisterValues[MOp1.getReg()] = Builder.CreateInBoundsGEP(Ty, Load, Val);
+    GEP = Builder.CreateInBoundsGEP(Ty, Load, Val);
   } else {
     printFailure(MI, "unexpected pointer type");
     return false;
   }
+
+  ValueTracker.setRegValue(MOp1.getReg(), GEP);
 
   return true;
 }
@@ -514,7 +518,7 @@ bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
     return false;
   }
 
-  RegisterValues[MOp1.getReg()] = Val;
+  ValueTracker.setRegValue(MOp1.getReg(), Val);
 
   // If the register is a branch value, also store to that pointer
   if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
@@ -543,11 +547,11 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   // Load from stack
   else if (MOp2.getReg() == RISCV::X8) {
     int64_t StackOffset = MOp3.getImm();
-    Ptr = StackValues[StackOffset];
+    Ptr = ValueTracker.getStackValue(StackOffset);
     // When no value found at the specified stack offset, the instruction
     // might be accessing the pointer stored at the previous stack value
     if (Ptr == nullptr) {
-      Value *ArrayPtr = StackValues[StackOffset - 4];
+      Value *ArrayPtr = ValueTracker.getStackValue(StackOffset - 4);
       if (ArrayPtr == nullptr || !isa<GEPOperator>(ArrayPtr) ||
           !isa<GlobalVariable>(ArrayPtr)) {
         printFailure(MI, "Stack value of load instruction not set");
@@ -601,12 +605,12 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
     Ty = Alloca->getAllocatedType();
   }
 
-  RegisterValues[MOp1.getReg()] = Builder.CreateLoad(Ty, Ptr);
+  LoadInst *Load = Builder.CreateLoad(Ty, Ptr);
+  ValueTracker.setRegValue(MOp1.getReg(), Load);
 
   // If the register is a branch value, also store to that pointer
   if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
-    Builder.CreateStore(RegisterValues[MOp1.getReg()],
-                        BranchRegisterValues[MOp1.getReg()]);
+    Builder.CreateStore(Load, BranchRegisterValues[MOp1.getReg()]);
   }
 
   return true;
@@ -636,10 +640,11 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
   }
   // Store to stack
   else if (MOp2.getReg() == RISCV::X8) {
-    Ptr = StackValues[MOp3.getImm()];
+    Ptr = ValueTracker.getStackValue(MOp3.getImm());
     // Check if already allocated, allocate if not
     if (Ptr == nullptr) {
-      Ptr = StackValues[MOp3.getImm()] = Builder.CreateAlloca(Val->getType());
+      Ptr = Builder.CreateAlloca(Val->getType());
+      ValueTracker.setStackValue(MOp3.getImm(), Ptr);
     }
   }
   // Store to address specified in register
@@ -720,8 +725,9 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
 
   // Found in .rodata, create getelementptr instruction
   if (GlobalVar != nullptr) {
-    RegisterValues[ADDIMOp1.getReg()] = Builder.CreateInBoundsGEP(
-        GlobalVar->getValueType(), GlobalVar, {Zero, Index});
+    Type *Ty = GlobalVar->getValueType();
+    Value *GEP = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
+    ValueTracker.setRegValue(ADDIMOp1.getReg(), GEP);
     return true;
   }
 
@@ -735,7 +741,7 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
   }
 
   // Found in .data
-  RegisterValues[ADDIMOp1.getReg()] = GlobalVar;
+  ValueTracker.setRegValue(ADDIMOp1.getReg(), GlobalVar);
 
   return true;
 }
@@ -765,7 +771,7 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
         break;
       }
 
-      Value *RegVal = RegisterValues[ArgReg];
+      Value *RegVal = ValueTracker.getRegValue(ArgReg);
       if (RegVal == nullptr) {
         break;
       }
@@ -796,7 +802,8 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
     }
   }
 
-  RegisterValues[RISCV::X10] = Builder.CreateCall(CalledFunction, Args);
+  CallInst *Call = Builder.CreateCall(CalledFunction, Args);
+  ValueTracker.setRegValue(RISCV::X10, Call);
 
   return true;
 }
@@ -810,7 +817,7 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
   if (RetTy->isVoidTy()) {
     Builder.CreateRetVoid();
   } else {
-    Value *RetVal = RegisterValues[RISCV::X10];
+    Value *RetVal = ValueTracker.getRegValue(RISCV::X10);
 
     if (RetVal == nullptr) {
       printFailure(MI, "Register value of return instruction not set");
