@@ -124,10 +124,9 @@ MachineFunctionRaiser *RISCV64ModuleRaiser::CreateAndAddMachineFunctionRaiser(
 RISCV64MachineInstructionRaiser::RISCV64MachineInstructionRaiser(
     MachineFunction &MF, const ModuleRaiser *MR, MCInstRaiser *MCIR)
     : MachineInstructionRaiser(MF, MR, MCIR), C(MF.getFunction().getContext()),
-      MCIR(MCIR), FunctionPrototypeDiscoverer(MF), ELFUtils(MR, C) {
-  // Initialize hardwired zero register
+      MCIR(MCIR), FunctionPrototypeDiscoverer(MF), ValueTracker(MF),
+      ELFUtils(MR, C) {
   Zero = ConstantInt::get(getDefaultIntType(C), 0);
-  ValueTracker.setRegValue(RISCV::X0, Zero);
 }
 
 bool RISCV64MachineInstructionRaiser::raise() {
@@ -147,6 +146,9 @@ bool RISCV64MachineInstructionRaiser::raise() {
       BranchRegisterValues.clear();
       BranchStackValues.clear();
     }
+
+    // Initialize hardwired zero register
+    ValueTracker.setRegValue(MBB->getNumber(), RISCV::X0, Zero);
 
     // Create basic block
     BasicBlock *BB = BasicBlock::Create(C, "", RaisedFunction);
@@ -227,7 +229,8 @@ bool RISCV64MachineInstructionRaiser::raise() {
         for (unsigned I = 0; I < MI.getNumOperands(); I++) {
           const MachineOperand &MOp = MI.getOperand(I);
           if (MOp.isReg()) {
-            Value *RegValue = ValueTracker.getRegValue(MOp.getReg());
+            Value *RegValue =
+                ValueTracker.getRegValue(MBB->getNumber(), MOp.getReg());
             Info->RegValues.push_back(RegValue);
           } else {
             Info->RegValues.push_back(nullptr);
@@ -239,7 +242,7 @@ bool RISCV64MachineInstructionRaiser::raise() {
       }
 
       // Raise non-terminator instruction
-      if (raiseNonTerminatorInstruction(MI, BB)) {
+      if (raiseNonTerminatorInstruction(MI, MBB->getNumber())) {
         printSuccess(MI);
       }
     }
@@ -309,8 +312,8 @@ int RISCV64MachineInstructionRaiser::getArgumentNumber(unsigned PReg) {
 }
 
 Value *RISCV64MachineInstructionRaiser::getRegOrArgValue(unsigned PReg,
-                                                         int MBBNo = 0) {
-  Value *Val = ValueTracker.getRegValue(PReg);
+                                                         signed MBBNo) {
+  Value *Val = ValueTracker.getRegValue(MBBNo, PReg);
 
   int ArgNo = getArgumentNumber(PReg);
   int NumArgs = RaisedFunction->getFunctionType()->getNumParams();
@@ -324,18 +327,19 @@ Value *RISCV64MachineInstructionRaiser::getRegOrArgValue(unsigned PReg,
 }
 
 Value *
-RISCV64MachineInstructionRaiser::getRegOrImmValue(const MachineOperand &MOp) {
+RISCV64MachineInstructionRaiser::getRegOrImmValue(const MachineOperand &MOp,
+                                                  signed MBBNo) {
   assert(MOp.isReg() || MOp.isImm());
 
   if (MOp.isReg()) {
-    return getRegOrArgValue(MOp.getReg());
+    return getRegOrArgValue(MOp.getReg(), MBBNo);
   }
 
   return ConstantInt::get(getDefaultIntType(C), MOp.getImm());
 }
 
 bool RISCV64MachineInstructionRaiser::raiseNonTerminatorInstruction(
-    const MachineInstr &MI, BasicBlock *BB) {
+    const MachineInstr &MI, signed MBBNo) {
   InstructionType Type = getInstructionType(MI.getOpcode());
 
   assert(Type != InstructionType::UNCONDITIONAL_BRANCH &&
@@ -349,24 +353,24 @@ bool RISCV64MachineInstructionRaiser::raiseNonTerminatorInstruction(
       return false;
     }
 
-    return raiseBinaryOperation(BinOp, MI, BB);
+    return raiseBinaryOperation(BinOp, MI, MBBNo);
   }
 
   switch (Type) {
   case InstructionType::NOP:
     return true;
   case InstructionType::MOVE:
-    return raiseMoveInstruction(MI, BB);
+    return raiseMoveInstruction(MI, MBBNo);
   case InstructionType::LOAD:
-    return raiseLoadInstruction(MI, BB);
+    return raiseLoadInstruction(MI, MBBNo);
   case InstructionType::STORE:
-    return raiseStoreInstruction(MI, BB);
+    return raiseStoreInstruction(MI, MBBNo);
   case InstructionType::GLOBAL:
-    return raiseGlobalInstruction(MI, BB);
+    return raiseGlobalInstruction(MI, MBBNo);
   case InstructionType::CALL:
-    return raiseCallInstruction(MI, BB);
+    return raiseCallInstruction(MI, MBBNo);
   case InstructionType::RETURN:
-    return raiseReturnInstruction(MI, BB);
+    return raiseReturnInstruction(MI, MBBNo);
   default:
     printFailure(MI, "Unimplemented or unknown instruction");
     return false;
@@ -395,7 +399,8 @@ bool RISCV64MachineInstructionRaiser::raiseTerminatorInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
-    BinaryOps BinOp, const MachineInstr &MI, BasicBlock *BB) {
+    BinaryOps BinOp, const MachineInstr &MI, signed MBBNo) {
+  BasicBlock *BB = BasicBlocks[MBBNo];
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
@@ -407,17 +412,17 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
   // Instructions like `addi s0,$` should load value at stack offset
   if (BinOp == BinaryOps::Add && MOp2.getReg() == RISCV::X8 && MOp3.isImm()) {
     Value *StackValue = ValueTracker.getStackValue(MOp3.getImm());
-    ValueTracker.setRegValue(MOp1.getReg(), StackValue);
+    ValueTracker.setRegValue(MBBNo, MOp1.getReg(), StackValue);
     return true;
   }
 
-  Value *LHS = getRegOrArgValue(MOp2.getReg());
+  Value *LHS = getRegOrArgValue(MOp2.getReg(), MBBNo);
   if (LHS == nullptr) {
     printFailure(MI, "LHS value of add instruction not set");
     return false;
   }
 
-  Value *RHS = getRegOrImmValue(MOp3);
+  Value *RHS = getRegOrImmValue(MOp3, MBBNo);
   if (RHS == nullptr) {
     printFailure(MI, "RHS value of add instruction not set");
     return false;
@@ -427,7 +432,7 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
       LHS->getType()->isPointerTy() != RHS->getType()->isPointerTy()) {
     Value *Ptr = LHS->getType()->isPointerTy() ? LHS : RHS;
     Value *Val = LHS->getType()->isPointerTy() ? RHS : LHS;
-    return raiseAddressOffsetInstruction(MI, Ptr, Val, BB);
+    return raiseAddressOffsetInstruction(MI, Ptr, Val, MBBNo);
   }
 
   if (LHS->getType() != RHS->getType()) {
@@ -441,7 +446,7 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
   }
 
   Value *Val = Builder.CreateBinOp(BinOp, LHS, RHS);
-  ValueTracker.setRegValue(MOp1.getReg(), Val);
+  ValueTracker.setRegValue(MBBNo, MOp1.getReg(), Val);
 
   // If the register is a branch value, also store to that pointer
   if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
@@ -452,7 +457,8 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
-    const MachineInstr &MI, Value *Ptr, Value *Val, BasicBlock *BB) {
+    const MachineInstr &MI, Value *Ptr, Value *Val, signed MBBNo) {
+  BasicBlock *BB = BasicBlocks[MBBNo];
   IRBuilder<> Builder(BB);
 
   assert(Ptr->getType()->isPointerTy() && "expected a pointer type");
@@ -489,13 +495,14 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
     return false;
   }
 
-  ValueTracker.setRegValue(MOp1.getReg(), GEP);
+  ValueTracker.setRegValue(MBBNo, MOp1.getReg(), GEP);
 
   return true;
 }
 
 bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
-    const MachineInstr &MI, BasicBlock *BB) {
+    const MachineInstr &MI, signed MBBNo) {
+  BasicBlock *BB = BasicBlocks[MBBNo];
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
@@ -503,7 +510,7 @@ bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
 
   assert(MOp1.isReg() && (MOp2.isReg() || MOp2.isImm()));
 
-  Value *Val = getRegOrImmValue(MOp2);
+  Value *Val = getRegOrImmValue(MOp2, MBBNo);
 
   // If the register is a branch value and basic block is not an immediate
   // successor of the entry block, load from that pointer instead.
@@ -518,7 +525,7 @@ bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
     return false;
   }
 
-  ValueTracker.setRegValue(MOp1.getReg(), Val);
+  ValueTracker.setRegValue(MBBNo, MOp1.getReg(), Val);
 
   // If the register is a branch value, also store to that pointer
   if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
@@ -529,7 +536,8 @@ bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
-    const MachineInstr &MI, BasicBlock *BB) {
+    const MachineInstr &MI, signed MBBNo) {
+  BasicBlock *BB = BasicBlocks[MBBNo];
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
@@ -565,11 +573,11 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   }
   // Load from address specified in register
   else if (MOp3.getImm() == 0) {
-    Ptr = getRegOrArgValue(MOp2.getReg());
+    Ptr = getRegOrArgValue(MOp2.getReg(), MBBNo);
   }
   // Load from array
   else {
-    Value *ArrayPtr = getRegOrArgValue(MOp2.getReg());
+    Value *ArrayPtr = getRegOrArgValue(MOp2.getReg(), MBBNo);
     if (ArrayPtr == nullptr) {
       printFailure(MI, "Array pointer of store instruction not set");
       return false;
@@ -606,7 +614,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   }
 
   LoadInst *Load = Builder.CreateLoad(Ty, Ptr);
-  ValueTracker.setRegValue(MOp1.getReg(), Load);
+  ValueTracker.setRegValue(MBBNo, MOp1.getReg(), Load);
 
   // If the register is a branch value, also store to that pointer
   if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
@@ -617,7 +625,8 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
-    const MachineInstr &MI, BasicBlock *BB) {
+    const MachineInstr &MI, signed MBBNo) {
+  BasicBlock *BB = BasicBlocks[MBBNo];
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
@@ -626,7 +635,7 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
 
   assert(MOp1.isReg() && MOp3.isImm());
 
-  Value *Val = getRegOrArgValue(MOp1.getReg());
+  Value *Val = getRegOrArgValue(MOp1.getReg(), MBBNo);
 
   if (Val == nullptr) {
     printFailure(MI, "Register value of store instruction not set");
@@ -649,11 +658,11 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
   }
   // Store to address specified in register
   else if (MOp3.getImm() == 0) {
-    Ptr = getRegOrArgValue(MOp2.getReg());
+    Ptr = getRegOrArgValue(MOp2.getReg(), MBBNo);
   }
   // Store to array
   else {
-    Value *ArrayPtr = getRegOrArgValue(MOp2.getReg());
+    Value *ArrayPtr = getRegOrArgValue(MOp2.getReg(), MBBNo);
     if (ArrayPtr == nullptr) {
       printFailure(MI, "Array pointer of store instruction not set");
       return false;
@@ -693,7 +702,8 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
-    const MachineInstr &MI, BasicBlock *BB) {
+    const MachineInstr &MI, signed MBBNo) {
+  BasicBlock *BB = BasicBlocks[MBBNo];
   IRBuilder<> Builder(BB);
 
   const MachineInstr *NextMI = MI.getNextNode();
@@ -727,7 +737,7 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
   if (GlobalVar != nullptr) {
     Type *Ty = GlobalVar->getValueType();
     Value *GEP = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
-    ValueTracker.setRegValue(ADDIMOp1.getReg(), GEP);
+    ValueTracker.setRegValue(MBBNo, ADDIMOp1.getReg(), GEP);
     return true;
   }
 
@@ -741,13 +751,14 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
   }
 
   // Found in .data
-  ValueTracker.setRegValue(ADDIMOp1.getReg(), GlobalVar);
+  ValueTracker.setRegValue(MBBNo, ADDIMOp1.getReg(), GlobalVar);
 
   return true;
 }
 
 bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
-    const MachineInstr &MI, BasicBlock *BB) {
+    const MachineInstr &MI, signed MBBNo) {
+  BasicBlock *BB = BasicBlocks[MBBNo];
   IRBuilder<> Builder(BB);
 
   Function *CalledFunction = getCalledFunction(MI);
@@ -771,7 +782,7 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
         break;
       }
 
-      Value *RegVal = ValueTracker.getRegValue(ArgReg);
+      Value *RegVal = ValueTracker.getRegValue(MBBNo, ArgReg);
       if (RegVal == nullptr) {
         break;
       }
@@ -803,13 +814,14 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
   }
 
   CallInst *Call = Builder.CreateCall(CalledFunction, Args);
-  ValueTracker.setRegValue(RISCV::X10, Call);
+  ValueTracker.setRegValue(MBBNo, RISCV::X10, Call);
 
   return true;
 }
 
 bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
-    const MachineInstr &MI, BasicBlock *BB) {
+    const MachineInstr &MI, signed MBBNo) {
+  BasicBlock *BB = BasicBlocks[MBBNo];
   IRBuilder<> Builder(BB);
 
   Type *RetTy = BB->getParent()->getReturnType();
@@ -817,7 +829,7 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
   if (RetTy->isVoidTy()) {
     Builder.CreateRetVoid();
   } else {
-    Value *RetVal = ValueTracker.getRegValue(RISCV::X10);
+    Value *RetVal = ValueTracker.getRegValue(MBBNo, RISCV::X10);
 
     if (RetVal == nullptr) {
       printFailure(MI, "Register value of return instruction not set");

@@ -116,8 +116,7 @@ struct BranchInfo {
     for (auto OtherDef : BI.RegDefs) {
       auto It = std::find_if(
           RegDefs.begin(), RegDefs.end(),
-          [&OtherDef](
-              std::pair<unsigned, const MachineInstr &> RegDef) {
+          [&OtherDef](std::pair<unsigned, const MachineInstr &> RegDef) {
             return RegDef.first == OtherDef.first;
           });
       if (It != RegDefs.end()) {

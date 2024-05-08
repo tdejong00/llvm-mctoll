@@ -37,6 +37,7 @@ namespace mctoll {
 /// within sections.
 class RISCVELFUtils {
 public:
+  RISCVELFUtils() = delete;
   RISCVELFUtils(const ModuleRaiser *MR, LLVMContext &C)
       : MR(MR), C(C),
         ELFObjectFile(dyn_cast<ELF64LEObjectFile>(MR->getObjectFile())) {}

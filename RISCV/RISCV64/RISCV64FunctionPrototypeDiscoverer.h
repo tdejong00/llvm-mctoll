@@ -22,8 +22,10 @@
 namespace llvm {
 namespace mctoll {
 
+/// Provides functions for discovering the function signature.
 class RISCV64FunctionPrototypeDiscoverer {
 public:
+  RISCV64FunctionPrototypeDiscoverer() = delete;
   RISCV64FunctionPrototypeDiscoverer(MachineFunction &MF)
       : MF(MF), C(MF.getFunction().getContext()) {}
 
