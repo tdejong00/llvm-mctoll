@@ -22,13 +22,15 @@
 namespace llvm {
 namespace mctoll {
 
+// Forward declaration of RISCV64MachineInstructionRaiser
+class RISCV64MachineInstructionRaiser;
+
 /// Keeps track of SSA values currently asigned to registers
 /// and stack slots during the raising of a machine function.
 class RISCV64ValueTracker {
 public:
   RISCV64ValueTracker() = delete;
-  RISCV64ValueTracker(MachineFunction &MF)
-      : MF(MF), C(MF.getFunction().getContext()) {}
+  RISCV64ValueTracker(RISCV64MachineInstructionRaiser *MIR);
 
   /// Gets the SSA value currently assigned to the specified register.
   Value *getRegValue(signed MBBNo, unsigned RegNo);
@@ -43,6 +45,7 @@ public:
   void setStackValue(signed StackOffset, Value *Val);
 
 private:
+  RISCV64MachineInstructionRaiser *MIR;
   MachineFunction &MF;
   LLVMContext &C;
 

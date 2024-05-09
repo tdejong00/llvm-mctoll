@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "RISCV64ValueTracker.h"
+#include "RISCV64/RISCV64MachineInstructionRaiser.h"
 #include "llvm/IR/Instructions.h"
 
 using namespace llvm;
@@ -19,6 +20,9 @@ using namespace llvm::mctoll;
 
 Value *RISCV64ValueTracker::getRegValue(signed MBBNo, unsigned RegNo) {
   return MBBRegValues[MBBNo][RegNo];
+RISCV64ValueTracker::RISCV64ValueTracker(RISCV64MachineInstructionRaiser *MIR)
+    : MIR(MIR), MF(MIR->getMF()), C(MIR->getMF().getFunction().getContext()) {}
+
 }
 
 void RISCV64ValueTracker::setRegValue(signed MBBNo, unsigned RegNo,

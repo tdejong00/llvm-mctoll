@@ -124,7 +124,7 @@ MachineFunctionRaiser *RISCV64ModuleRaiser::CreateAndAddMachineFunctionRaiser(
 RISCV64MachineInstructionRaiser::RISCV64MachineInstructionRaiser(
     MachineFunction &MF, const ModuleRaiser *MR, MCInstRaiser *MCIR)
     : MachineInstructionRaiser(MF, MR, MCIR), C(MF.getFunction().getContext()),
-      MCIR(MCIR), FunctionPrototypeDiscoverer(MF), ValueTracker(MF),
+      MCIR(MCIR), FunctionPrototypeDiscoverer(MF), ValueTracker(this),
       ELFUtils(MR, C) {
   Zero = ConstantInt::get(getDefaultIntType(C), 0);
 }

@@ -17,7 +17,7 @@
 #include "MCInstRaiser.h"
 #include "RISCV64/RISCV64FunctionPrototypeDiscoverer.h"
 #include "RISCV64/RISCV64MachineInstructionUtils.h"
-#include "RISCV64ValueTracker.h"
+#include "RISCV64/RISCV64ValueTracker.h"
 #include "RISCVELFUtils.h"
 #include "Raiser/MachineInstructionRaiser.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
