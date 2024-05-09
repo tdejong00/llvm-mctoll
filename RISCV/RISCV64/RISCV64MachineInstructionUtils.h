@@ -24,6 +24,7 @@
 #include "llvm/IR/Type.h"
 #include <algorithm>
 #include <cstdint>
+#include <string>
 
 namespace llvm {
 namespace mctoll {
@@ -49,6 +50,9 @@ enum class InstructionType {
   CONDITIONAL_BRANCH,
   UNKNOWN
 };
+
+/// Gets the string representation of the register.
+std::string getRegName(unsigned int RegNo);
 
 /// Gets the default type for machine instruction using the given LLVM context,
 /// based on if the given machine instruction loads or stores a pointer.

@@ -32,6 +32,12 @@ using namespace llvm;
 using namespace llvm::mctoll;
 using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
 
+
+std::string
+RISCV64MachineInstructionUtils::getRegName(unsigned int RegNo) {
+  return "x" + std::to_string(RegNo - RISCV::X0);
+}
+
 Type *RISCV64MachineInstructionUtils::getDefaultType(LLVMContext &C,
                                                      const MachineInstr &MI) {
   if (MI.getOpcode() == RISCV::LD || MI.getOpcode() == RISCV::C_LD ||
