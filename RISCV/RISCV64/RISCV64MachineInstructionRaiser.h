@@ -41,10 +41,10 @@ public:
                                   MCInstRaiser *MCIR);
 
   /// Raises the machine function by traversing the machine basic blocks of the
-  /// machine function in loop traversal order. Basic block will be created for
-  /// each machine basic block with incrementing names; starting with "entry"
-  /// and after that "bb.{X}", where X is the index of the machine basic block.
-  /// The raised instructions will be added to the created basic blocks.
+  /// machine function in loop traversal order. A basic block will be created
+  /// for each machine basic block with incrementing names like "bb.{X}", where
+  /// X is the index of the machine basic block. The raised instructions will be
+  /// added to the created basic blocks.
   bool raise() override;
 
   /// Creates a FunctionType and subsequently a Function by discovering the
@@ -68,6 +68,10 @@ public:
   /// to the immediate. Assumes that the operand is either a register or an
   /// immediate.
   Value *getRegOrImmValue(const MachineOperand &MOp, int MBBNo);
+
+  /// Gets the basic block created for the specified machine basic block.
+  /// Returns nullptr if the block is not (yet) created.
+  BasicBlock *getBasicBlock(int MBBNo);
 
   /// Not used, dummy implementation.
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
@@ -168,6 +172,7 @@ private:
   RISCV64ValueTracker ValueTracker;
   RISCVELFUtils ELFUtils;
 
+  /// A ConstantInt representing the number zero using the default int type.
   ConstantInt *Zero;
 
   /// A map from a MBB number to the corresponding BB.
