@@ -255,21 +255,6 @@ RISCV64MachineInstructionUtils::skipProlog(const MachineBasicBlock &MBB) {
   return It;
 }
 
-bool RISCV64MachineInstructionUtils::isFinalDefinition(const MachineInstr &MI) {
-  const MachineOperand &MOp1 = MI.getOperand(0);
-  assert(MOp1.isReg());
-
-  // Loop from next instruction to end of machine basic block and
-  // check if any other instruction defines the register
-  const MachineBasicBlock *MBB = MI.getParent();
-  for (auto It = ++MI.getIterator(); It != MBB->instr_end(); ++It) {
-    if (It->definesRegister(MOp1.getReg())) {
-      return false;
-    }
-  }
-  return true;
-}
-
 MachineBasicBlock::const_reverse_instr_iterator
 RISCV64MachineInstructionUtils::findInstructionByOpcode(
     const MachineBasicBlock &MBB, unsigned int Op,
@@ -286,27 +271,4 @@ RISCV64MachineInstructionUtils::findInstructionByRegNo(
     return MI.definesRegister(RegNo);
   };
   return std::find_if(MBB.instr_rbegin(), EndIt, Pred);
-}
-
-BranchInfo RISCV64MachineInstructionUtils::constructBranchInfo(
-    const MachineBasicBlock *MBB) {
-  BranchInfo BI;
-  for (const MachineInstr &MI : MBB->instrs()) {
-    InstructionType Type = getInstructionType(MI.getOpcode());
-    // Check if instruction stores to stack
-    if (Type == InstructionType::STORE) {
-      const MachineOperand &MOp1 = MI.getOperand(0);
-      const MachineOperand &MOp2 = MI.getOperand(1);
-      const MachineOperand &MOp3 = MI.getOperand(2);
-      assert(MOp1.isReg() && MOp2.isReg() && MOp3.isImm());
-      if (MOp2.getReg() == RISCV::X8) {
-        BI.StackStores.emplace_back(MOp3.getImm(), MI);
-      }
-    }
-    // For now, only check if instruction defines register x15/a5
-    else if (MI.definesRegister(RISCV::X15)) {
-      BI.RegDefs.emplace_back(RISCV::X15, MI);
-    }
-  }
-  return BI;
 }

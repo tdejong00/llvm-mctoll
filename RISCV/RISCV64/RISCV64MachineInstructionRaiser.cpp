@@ -135,16 +135,11 @@ bool RISCV64MachineInstructionRaiser::raise() {
 
   // Traverse basic blocks of machine function and raise all non-terminators
   for (LoopTraversal::TraversedMBBInfo MBBInfo : TraversalOrder) {
+    const MachineBasicBlock *MBB = MBBInfo.MBB;
+
     // Only process basic blocks once
     if (!MBBInfo.PrimaryPass) {
       continue;
-    }
-
-    const MachineBasicBlock *MBB = MBBInfo.MBB;
-    // Reset branch values
-    if (MBB->isEntryBlock()) {
-      BranchRegisterValues.clear();
-      BranchStackValues.clear();
     }
 
     // Initialize hardwired zero register
@@ -184,43 +179,6 @@ bool RISCV64MachineInstructionRaiser::raise() {
       if (MI.isTerminator() &&
           getInstructionType(MI.getOpcode()) != InstructionType::RETURN) {
         printSkipped(MI, "Skipped raising terminator instruction");
-
-        // In the case of branches, a different value might be returned based
-        // on which path is taken. To ensure that the returning basic block
-        // uses the correct value, instead of the value which happens to be
-        // present in that register/stack offset at that time, we create an
-        // allocation for each register/stack offset which both branches
-        // define/store to. This pointer will then be used in subsequent
-        // instruction which load/store from that register/stack offset.
-        if (MBB->succ_size() == 2) {
-          MachineBasicBlock *SuccMBB1 = *MBB->succ_begin();
-          MachineBasicBlock *SuccMBB2 = *(MBB->succ_begin()++);
-
-          // Only consider non-looping branches
-          if (!MBB->isPredecessor(SuccMBB1) && !MBB->isPredecessor(SuccMBB2)) {
-            BranchInfo BranchInfo1 = constructBranchInfo(SuccMBB1);
-            BranchInfo BranchInfo2 = constructBranchInfo(SuccMBB2);
-
-            BranchInfo MergedBranchInfo = BranchInfo1.merge(BranchInfo2);
-
-            IRBuilder<> Builder(BB);
-            for (auto StackStore : MergedBranchInfo.StackStores) {
-              Type *Ty = getDefaultType(C, StackStore.second);
-              BranchStackValues[StackStore.first] = Builder.CreateAlloca(Ty);
-            }
-            // Only consider register definitions if there
-            // are no stores which both branches have made
-            if (MergedBranchInfo.StackStores.empty()) {
-              for (auto RegDef : MergedBranchInfo.RegDefs) {
-                if (BranchRegisterValues[RegDef.first] != nullptr) {
-                  continue;
-                }
-                Type *Ty = getDefaultType(C, RegDef.second);
-                BranchRegisterValues[RegDef.first] = Builder.CreateAlloca(Ty);
-              }
-            }
-          }
-        }
 
         // Record information about terminator instruction for use in later pass
         ControlTransferInfo *Info = new ControlTransferInfo;
@@ -451,11 +409,6 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
   Value *Val = Builder.CreateBinOp(BinOp, LHS, RHS);
   ValueTracker.setRegValue(MBBNo, MOp1.getReg(), Val);
 
-  // If the register is a branch value, also store to that pointer
-  if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
-    Builder.CreateStore(Val, BranchRegisterValues[MOp1.getReg()]);
-  }
-
   return true;
 }
 
@@ -515,25 +468,12 @@ bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
 
   Value *Val = getRegOrImmValue(MOp2, MBBNo);
 
-  // If the register is a branch value and basic block is not an immediate
-  // successor of the entry block, load from that pointer instead.
-  if (MOp2.isReg() && BranchRegisterValues[MOp2.getReg()] != nullptr &&
-      !MF.begin()->isSuccessor(MI.getParent())) {
-    Type *Ty = getDefaultType(C, MI);
-    Val = Builder.CreateLoad(Ty, BranchRegisterValues[MOp2.getReg()]);
-  }
-
   if (Val == nullptr) {
     printFailure(MI, "Register value of move instruction not set");
     return false;
   }
 
   ValueTracker.setRegValue(MBBNo, MOp1.getReg(), Val);
-
-  // If the register is a branch value, also store to that pointer
-  if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
-    Builder.CreateStore(Val, BranchRegisterValues[MOp1.getReg()]);
-  }
 
   return true;
 }
@@ -551,12 +491,8 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
 
   Value *Ptr = nullptr;
 
-  // Load from pointer made for branch value
-  if (BranchStackValues[MOp3.getImm()] != nullptr) {
-    Ptr = BranchStackValues[MOp3.getImm()];
-  }
   // Load from stack
-  else if (MOp2.getReg() == RISCV::X8) {
+  if (MOp2.getReg() == RISCV::X8) {
     int64_t StackOffset = MOp3.getImm();
     Ptr = ValueTracker.getStackValue(StackOffset);
     // When no value found at the specified stack offset, the instruction
@@ -619,11 +555,6 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   LoadInst *Load = Builder.CreateLoad(Ty, Ptr);
   ValueTracker.setRegValue(MBBNo, MOp1.getReg(), Load);
 
-  // If the register is a branch value, also store to that pointer
-  if (BranchRegisterValues[MOp1.getReg()] != nullptr && isFinalDefinition(MI)) {
-    Builder.CreateStore(Load, BranchRegisterValues[MOp1.getReg()]);
-  }
-
   return true;
 }
 
@@ -646,12 +577,8 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
   }
 
   Value *Ptr = nullptr;
-  // Store to pointer made for branch value
-  if (BranchStackValues[MOp3.getImm()] != nullptr) {
-    Ptr = BranchStackValues[MOp3.getImm()];
-  }
   // Store to stack
-  else if (MOp2.getReg() == RISCV::X8) {
+  if (MOp2.getReg() == RISCV::X8) {
     Ptr = ValueTracker.getStackValue(MOp3.getImm());
     // Check if already allocated, allocate if not
     if (Ptr == nullptr) {

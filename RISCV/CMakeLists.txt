@@ -21,6 +21,7 @@ add_llvm_component_library(mctollRISCVRaiser
   RISCV64/RISCV64ModuleRaiser.cpp
   RISCV64/RISCV64FunctionPrototypeDiscoverer.cpp
   RISCV64/RISCV64MachineInstructionUtils.cpp
+  RISCV64/RISCV64ValueTracker.cpp
 
   DEPENDS
     ${LLVM_MCTOLL_DEPS}

@@ -177,14 +177,6 @@ private:
 
   /// A map from a MBB number to the corresponding BB.
   std::unordered_map<int, BasicBlock *> BasicBlocks;
-
-  /// A map from a register number to a pointer value from which should
-  /// be loaded/stored instead of the register value in the case of a branch
-  std::unordered_map<unsigned, Value *> BranchRegisterValues;
-
-  /// A map from a stack offset to a pointer value from which should
-  /// be loaded/stored instead of the stack value in the case of a branch
-  std::unordered_map<signed, Value *> BranchStackValues;
 };
 
 } // namespace mctoll

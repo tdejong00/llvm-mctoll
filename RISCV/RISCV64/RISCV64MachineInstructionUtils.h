@@ -87,11 +87,6 @@ bool isEpilogInstruction(const MachineInstr &MI);
 MachineBasicBlock::const_instr_iterator
 skipProlog(const MachineBasicBlock &MBB);
 
-/// Determines if the register defined by the given machine instruction
-/// is the final definition of that register within the machine basic block
-/// which the machine instruction resides in.
-bool isFinalDefinition(const MachineInstr &MI);
-
 /// Finds the instruction in the machine basic block which has
 /// the given opcode. Only searches up until the given end iterator.
 MachineBasicBlock::const_reverse_instr_iterator
@@ -103,49 +98,6 @@ findInstructionByOpcode(const MachineBasicBlock &MBB, unsigned int Op,
 MachineBasicBlock::const_reverse_instr_iterator
 findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned int RegNo,
                        MachineBasicBlock::const_reverse_instr_iterator EndIt);
-
-/// A struct for storing which registers are defined
-/// and which stack offsets are stored in a branch.
-struct BranchInfo {
-
-  std::vector<std::pair<unsigned int, const MachineInstr &>> RegDefs;
-  std::vector<std::pair<int, const MachineInstr &>> StackStores;
-
-  /// Merges the branch info with the current branch info by only taking
-  /// the register definitions and stack stores that occur in both instances.
-  BranchInfo merge(BranchInfo BI) {
-    BranchInfo MergedBranchInfo;
-
-    // Merge register definitions
-    for (auto OtherDef : BI.RegDefs) {
-      auto It = std::find_if(
-          RegDefs.begin(), RegDefs.end(),
-          [&OtherDef](std::pair<unsigned int, const MachineInstr &> RegDef) {
-            return RegDef.first == OtherDef.first;
-          });
-      if (It != RegDefs.end()) {
-        MergedBranchInfo.RegDefs.push_back(OtherDef);
-      }
-    }
-
-    // Merge stack stores
-    for (auto OtherStore : BI.StackStores) {
-      auto It = std::find_if(
-          StackStores.begin(), StackStores.end(),
-          [&OtherStore](std::pair<int, const MachineInstr &> StackStore) {
-            return StackStore.first == OtherStore.first;
-          });
-      if (It != StackStores.end()) {
-        MergedBranchInfo.StackStores.push_back(OtherStore);
-      }
-    }
-
-    return MergedBranchInfo;
-  }
-};
-
-/// Constructs the branch info for the machine basic block.
-BranchInfo constructBranchInfo(const MachineBasicBlock *MBB);
 
 } // namespace RISCV64MachineInstructionUtils
 } // namespace mctoll

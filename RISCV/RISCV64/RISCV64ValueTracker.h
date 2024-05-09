@@ -14,6 +14,7 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64VALUETRACKER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_RISCV_RISCV64_RISCV64VALUETRACKER_H
 
+#include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Value.h"
@@ -21,6 +22,14 @@
 
 namespace llvm {
 namespace mctoll {
+
+/// Represents a register definition containing the machine instruction
+/// which defines the register and the accompanying value of the definition.
+struct RegisterDefinition {
+  signed MBBNo;
+  const MachineInstr &MI;
+  Value *Val;
+};
 
 // Forward declaration of RISCV64MachineInstructionRaiser
 class RISCV64MachineInstructionRaiser;
@@ -32,7 +41,12 @@ public:
   RISCV64ValueTracker() = delete;
   RISCV64ValueTracker(RISCV64MachineInstructionRaiser *MIR);
 
-  /// Gets the SSA value currently assigned to the specified register.
+  /// Gets the SSA value currently assigned to the specified register, by first
+  /// looking for a local definition. If the register is not defined in the 
+  /// specified basic block, looks at the predecessors for a definition.
+  /// When all predecessors define the specified register, the register
+  /// is promoted to a stack slot, all predecessors will store to that stack
+  /// slot, and load instruction from that stack slot will be returned.
   Value *getRegValue(int MBBNo, unsigned int RegNo);
 
   /// Sets the SSA value currently assigned to the specified register.
@@ -45,6 +59,20 @@ public:
   void setStackValue(int StackOffset, Value *Val);
 
 private:
+  /// Returns the last instruction which defines the register,
+  /// or instr_rend if it does not define the register at all.
+  MachineBasicBlock::const_reverse_instr_iterator
+  getFinalDefinition(unsigned int RegNo, const MachineBasicBlock *MBB);
+
+  /// Returns the register definitions for the specified register
+  /// made by the predecessors of the specified basic block.
+  std::vector<RegisterDefinition>
+  getDefinitions(unsigned int RegNo, const MachineBasicBlock *MBB);
+
+  /// Determines the type for the stack slot for the promoted register
+  /// based on the different definitions of the branches. 
+  Type *getStackSlotType(const std::vector<RegisterDefinition> &Defs);
+
   RISCV64MachineInstructionRaiser *MIR;
   MachineFunction &MF;
   LLVMContext &C;

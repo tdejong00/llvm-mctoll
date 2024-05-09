@@ -272,7 +272,7 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
   } else if (Ty->isArrayTy()) {
     // Determine width of element type
     ArrayType *ArrayTy = dyn_cast<ArrayType>(Ty);
-    unsigned ElementWidth = ArrayTy->getElementType()->getIntegerBitWidth();
+    unsigned int ElementWidth = ArrayTy->getElementType()->getIntegerBitWidth();
 
     // Convert the array of bytes to an array of constants, by combining
     // the bytes into 32-bit integers in little-endian format
