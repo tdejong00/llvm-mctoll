@@ -226,7 +226,7 @@ bool RISCV64MachineInstructionRaiser::raise() {
         ControlTransferInfo *Info = new ControlTransferInfo;
         Info->CandidateBlock = BB;
         Info->CandidateMachineInstr = &MI;
-        for (unsigned I = 0; I < MI.getNumOperands(); I++) {
+        for (unsigned int I = 0; I < MI.getNumOperands(); I++) {
           const MachineOperand &MOp = MI.getOperand(I);
           if (MOp.isReg()) {
             Value *RegValue =
@@ -303,16 +303,16 @@ FunctionType *RISCV64MachineInstructionRaiser::getRaisedFunctionPrototype() {
   return RaisedFunction->getFunctionType();
 }
 
-int RISCV64MachineInstructionRaiser::getArgumentNumber(unsigned PReg) {
-  unsigned ArgReg = PReg - RISCV::X10;
+int RISCV64MachineInstructionRaiser::getArgumentNumber(unsigned int PReg) {
+  unsigned int ArgReg = PReg - RISCV::X10;
   if (ArgReg < 8) {
     return ArgReg;
   }
   return -1;
 }
 
-Value *RISCV64MachineInstructionRaiser::getRegOrArgValue(unsigned PReg,
-                                                         signed MBBNo) {
+Value *RISCV64MachineInstructionRaiser::getRegOrArgValue(unsigned int PReg,
+                                                         int MBBNo) {
   Value *Val = ValueTracker.getRegValue(MBBNo, PReg);
 
   int ArgNo = getArgumentNumber(PReg);
@@ -328,7 +328,7 @@ Value *RISCV64MachineInstructionRaiser::getRegOrArgValue(unsigned PReg,
 
 Value *
 RISCV64MachineInstructionRaiser::getRegOrImmValue(const MachineOperand &MOp,
-                                                  signed MBBNo) {
+                                                  int MBBNo) {
   assert(MOp.isReg() || MOp.isImm());
 
   if (MOp.isReg()) {
@@ -339,7 +339,7 @@ RISCV64MachineInstructionRaiser::getRegOrImmValue(const MachineOperand &MOp,
 }
 
 bool RISCV64MachineInstructionRaiser::raiseNonTerminatorInstruction(
-    const MachineInstr &MI, signed MBBNo) {
+    const MachineInstr &MI, int MBBNo) {
   InstructionType Type = getInstructionType(MI.getOpcode());
 
   assert(Type != InstructionType::UNCONDITIONAL_BRANCH &&
@@ -399,8 +399,8 @@ bool RISCV64MachineInstructionRaiser::raiseTerminatorInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
-    BinaryOps BinOp, const MachineInstr &MI, signed MBBNo) {
   BasicBlock *BB = BasicBlocks[MBBNo];
+    BinaryOps BinOp, const MachineInstr &MI, int MBBNo) {
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
@@ -457,8 +457,8 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
-    const MachineInstr &MI, Value *Ptr, Value *Val, signed MBBNo) {
   BasicBlock *BB = BasicBlocks[MBBNo];
+    const MachineInstr &MI, Value *Ptr, Value *Val, int MBBNo) {
   IRBuilder<> Builder(BB);
 
   assert(Ptr->getType()->isPointerTy() && "expected a pointer type");
@@ -501,8 +501,8 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
-    const MachineInstr &MI, signed MBBNo) {
   BasicBlock *BB = BasicBlocks[MBBNo];
+    const MachineInstr &MI, int MBBNo) {
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
@@ -536,8 +536,8 @@ bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
-    const MachineInstr &MI, signed MBBNo) {
   BasicBlock *BB = BasicBlocks[MBBNo];
+    const MachineInstr &MI, int MBBNo) {
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
@@ -625,8 +625,8 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
-    const MachineInstr &MI, signed MBBNo) {
   BasicBlock *BB = BasicBlocks[MBBNo];
+    const MachineInstr &MI, int MBBNo) {
   IRBuilder<> Builder(BB);
 
   const MachineOperand &MOp1 = MI.getOperand(0);
@@ -702,8 +702,8 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
-    const MachineInstr &MI, signed MBBNo) {
   BasicBlock *BB = BasicBlocks[MBBNo];
+    const MachineInstr &MI, int MBBNo) {
   IRBuilder<> Builder(BB);
 
   const MachineInstr *NextMI = MI.getNextNode();
@@ -757,8 +757,8 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
-    const MachineInstr &MI, signed MBBNo) {
   BasicBlock *BB = BasicBlocks[MBBNo];
+    const MachineInstr &MI, int MBBNo) {
   IRBuilder<> Builder(BB);
 
   Function *CalledFunction = getCalledFunction(MI);
@@ -774,7 +774,7 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
   std::vector<Value *> Args;
   if (CalledFunctionType->isVarArg() ||
       CalledFunctionType->getNumParams() > 0) {
-    for (unsigned ArgReg = RISCV::X10; ArgReg < RISCV::X17; ArgReg++) {
+    for (unsigned int ArgReg = RISCV::X10; ArgReg < RISCV::X17; ArgReg++) {
       // Do not add too many arguments, values might
       // still be present from  previous function calls.
       if (Args.size() == CalledFunctionType->getNumParams() &&
@@ -798,7 +798,7 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
   }
 
   // Check if arguments are of correct type
-  for (unsigned I = 0; I < CalledFunctionType->getNumParams(); I++) {
+  for (unsigned int I = 0; I < CalledFunctionType->getNumParams(); I++) {
     Type *ArgTy = Args[I]->getType();
     Type *ParamTy = CalledFunctionType->getParamType(I);
     // Coerce type of function signature for integer types
@@ -820,8 +820,8 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
 }
 
 bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
-    const MachineInstr &MI, signed MBBNo) {
   BasicBlock *BB = BasicBlocks[MBBNo];
+    const MachineInstr &MI, int MBBNo) {
   IRBuilder<> Builder(BB);
 
   Type *RetTy = BB->getParent()->getReturnType();

@@ -119,7 +119,7 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
     auto It = skipProlog(MBB);
     while (It->getOpcode() == RISCV::C_MV || It->getOpcode() == RISCV::SD) {
       // Loop over parameter registers (a0 - a7)
-      for (unsigned RegNo = RISCV::X10; RegNo < RISCV::X17; RegNo++) {
+      for (unsigned int RegNo = RISCV::X10; RegNo < RISCV::X17; RegNo++) {
         // Get source operand
         const MachineOperand &MOp1 = It->getOperand(0);
         const MachineOperand &MOp2 = It->getOperand(1);

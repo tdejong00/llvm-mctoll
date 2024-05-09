@@ -18,22 +18,22 @@
 using namespace llvm;
 using namespace llvm::mctoll;
 
-Value *RISCV64ValueTracker::getRegValue(signed MBBNo, unsigned RegNo) {
   return MBBRegValues[MBBNo][RegNo];
 RISCV64ValueTracker::RISCV64ValueTracker(RISCV64MachineInstructionRaiser *MIR)
     : MIR(MIR), MF(MIR->getMF()), C(MIR->getMF().getFunction().getContext()) {}
 
+Value *RISCV64ValueTracker::getRegValue(int MBBNo, unsigned int RegNo) {
 }
 
-void RISCV64ValueTracker::setRegValue(signed MBBNo, unsigned RegNo,
+void RISCV64ValueTracker::setRegValue(int MBBNo, unsigned int RegNo,
                                       Value *Val) {
   MBBRegValues[MBBNo][RegNo] = Val;
 }
 
-Value *RISCV64ValueTracker::getStackValue(signed StackOffset) {
+Value *RISCV64ValueTracker::getStackValue(int StackOffset) {
   return StackValues[StackOffset];
 }
 
-void RISCV64ValueTracker::setStackValue(signed StackOffset, Value *Val) {
+void RISCV64ValueTracker::setStackValue(int StackOffset, Value *Val) {
   StackValues[StackOffset] = Val;
 }

@@ -52,7 +52,7 @@ PointerType *RISCV64MachineInstructionUtils::getDefaultPtrType(LLVMContext &C) {
 ConstantInt *RISCV64MachineInstructionUtils::toGEPIndex(LLVMContext &C,
                                                         uint64_t Offset) {
   IntegerType *Ty = getDefaultIntType(C);
-  unsigned Width = Ty->getBitWidth() / 8;
+  unsigned int Width = Ty->getBitWidth() / 8;
 
   // Make sure offset is a multiple of Width
   if (Offset & (Width - 1)) {
@@ -67,7 +67,7 @@ ConstantInt *RISCV64MachineInstructionUtils::toGEPIndex(LLVMContext &C,
 }
 
 InstructionType
-RISCV64MachineInstructionUtils::getInstructionType(unsigned Op) {
+RISCV64MachineInstructionUtils::getInstructionType(unsigned int Op) {
   switch (Op) {
   case RISCV::C_NOP:
     return InstructionType::NOP;
@@ -110,7 +110,7 @@ RISCV64MachineInstructionUtils::getInstructionType(unsigned Op) {
   }
 }
 
-BinaryOps RISCV64MachineInstructionUtils::toBinaryOperation(unsigned Op) {
+BinaryOps RISCV64MachineInstructionUtils::toBinaryOperation(unsigned int Op) {
   switch (Op) {
   case RISCV::ADD:
   case RISCV::ADDW:
@@ -176,7 +176,7 @@ BinaryOps RISCV64MachineInstructionUtils::toBinaryOperation(unsigned Op) {
   }
 }
 
-Predicate RISCV64MachineInstructionUtils::toPredicate(unsigned Op) {
+Predicate RISCV64MachineInstructionUtils::toPredicate(unsigned int Op) {
   switch (Op) {
   case RISCV::BEQ:
   case RISCV::C_BEQZ:
@@ -197,7 +197,7 @@ Predicate RISCV64MachineInstructionUtils::toPredicate(unsigned Op) {
   }
 }
 
-bool RISCV64MachineInstructionUtils::isAddI(unsigned Op) {
+bool RISCV64MachineInstructionUtils::isAddI(unsigned int Op) {
   return Op == RISCV::ADDI || Op == RISCV::ADDIW || Op == RISCV::C_ADDI ||
          Op == RISCV::C_ADDIW || Op == RISCV::C_ADDI4SPN ||
          Op == RISCV::C_ADDI16SP;

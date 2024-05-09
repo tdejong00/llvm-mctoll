@@ -64,14 +64,14 @@ PointerType *getDefaultPtrType(LLVMContext &C);
 ConstantInt *toGEPIndex(LLVMContext &C, uint64_t Offset);
 
 /// Determines the instruction type of the opcode.
-InstructionType getInstructionType(unsigned Op);
+InstructionType getInstructionType(unsigned int Op);
 /// Converts the opcode to a binary operation.
-BinaryOps toBinaryOperation(unsigned Op);
+BinaryOps toBinaryOperation(unsigned int Op);
 /// Converts the opcode to a compare predicate.
-Predicate toPredicate(unsigned Op);
+Predicate toPredicate(unsigned int Op);
 
 /// Determines whether the opcode is an ADDI instruction.
-bool isAddI(unsigned Op);
+bool isAddI(unsigned int Op);
 
 /// Determines whether the machine instruction is a part of the prolog.
 bool isPrologInstruction(const MachineInstr &MI);
@@ -91,21 +91,21 @@ bool isFinalDefinition(const MachineInstr &MI);
 /// Finds the instruction in the machine basic block which has
 /// the given opcode. Only searches up until the given end iterator.
 MachineBasicBlock::const_reverse_instr_iterator
-findInstructionByOpcode(const MachineBasicBlock &MBB, unsigned Op,
+findInstructionByOpcode(const MachineBasicBlock &MBB, unsigned int Op,
                         MachineBasicBlock::const_reverse_instr_iterator EndIt);
 
 /// Finds the instruction in the machine basic block which defines the
 /// given register number. Only searches up until the given end iterator.
 MachineBasicBlock::const_reverse_instr_iterator
-findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned RegNo,
+findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned int RegNo,
                        MachineBasicBlock::const_reverse_instr_iterator EndIt);
 
 /// A struct for storing which registers are defined
 /// and which stack offsets are stored in a branch.
 struct BranchInfo {
 
-  std::vector<std::pair<unsigned, const MachineInstr &>> RegDefs;
-  std::vector<std::pair<signed, const MachineInstr &>> StackStores;
+  std::vector<std::pair<unsigned int, const MachineInstr &>> RegDefs;
+  std::vector<std::pair<int, const MachineInstr &>> StackStores;
 
   /// Merges the branch info with the current branch info by only taking
   /// the register definitions and stack stores that occur in both instances.
@@ -116,7 +116,7 @@ struct BranchInfo {
     for (auto OtherDef : BI.RegDefs) {
       auto It = std::find_if(
           RegDefs.begin(), RegDefs.end(),
-          [&OtherDef](std::pair<unsigned, const MachineInstr &> RegDef) {
+          [&OtherDef](std::pair<unsigned int, const MachineInstr &> RegDef) {
             return RegDef.first == OtherDef.first;
           });
       if (It != RegDefs.end()) {
@@ -128,7 +128,7 @@ struct BranchInfo {
     for (auto OtherStore : BI.StackStores) {
       auto It = std::find_if(
           StackStores.begin(), StackStores.end(),
-          [&OtherStore](std::pair<signed, const MachineInstr &> StackStore) {
+          [&OtherStore](std::pair<int, const MachineInstr &> StackStore) {
             return StackStore.first == OtherStore.first;
           });
       if (It != StackStores.end()) {
