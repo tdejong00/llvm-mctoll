@@ -51,16 +51,21 @@ enum class InstructionType {
   UNKNOWN
 };
 
-/// Gets the string representation of the register.
-std::string getRegName(unsigned int RegNo);
-
 /// Gets the default type for machine instruction using the given LLVM context,
 /// based on if the given machine instruction loads or stores a pointer.
 Type *getDefaultType(LLVMContext &C, const MachineInstr &MI);
+
 /// Gets the default integer type using the given LLVM context.
 IntegerType *getDefaultIntType(LLVMContext &C);
+
 /// Gets the default pointer type using the given LLVM context.
 PointerType *getDefaultPtrType(LLVMContext &C);
+
+/// Gets the string representation of the register.
+std::string getRegName(unsigned int RegNo);
+
+/// Determines whether the register is a argument register, i.e. x10-x17.
+bool isArgReg(unsigned int RegNo);
 
 /// Creates a ConstantInt representing a GEP index, based on the given pointer
 /// offset (number of bytes). The operands of the GEP instructions represent
@@ -69,8 +74,10 @@ ConstantInt *toGEPIndex(LLVMContext &C, uint64_t Offset);
 
 /// Determines the instruction type of the opcode.
 InstructionType getInstructionType(unsigned int Op);
+
 /// Converts the opcode to a binary operation.
 BinaryOps toBinaryOperation(unsigned int Op);
+
 /// Converts the opcode to a compare predicate.
 Predicate toPredicate(unsigned int Op);
 
@@ -79,13 +86,16 @@ bool isAddI(unsigned int Op);
 
 /// Determines whether the machine instruction is a part of the prolog.
 bool isPrologInstruction(const MachineInstr &MI);
+
 /// Determines whether the machine instruction is a part of the epilog.
 bool isEpilogInstruction(const MachineInstr &MI);
 
-/// Returns the iterator of the first instruction
-/// after the prolog of the machine basic block.
-MachineBasicBlock::const_instr_iterator
-skipProlog(const MachineBasicBlock &MBB);
+/// Determines whether the register is defined by one of the instructions
+/// from the first instruction of the machine basic block to the specified
+/// machine instruction.
+bool isRegisterDefined(unsigned int RegNo,
+                       MachineBasicBlock::const_instr_iterator Begin,
+                       MachineBasicBlock::const_instr_iterator End);
 
 /// Finds the instruction in the machine basic block which has
 /// the given opcode. Only searches up until the given end iterator.

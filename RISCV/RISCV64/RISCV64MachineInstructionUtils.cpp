@@ -24,7 +24,6 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Debug.h"
 #include <algorithm>
-#include <cassert>
 
 #define DEBUG_TYPE "mctoll"
 
@@ -32,10 +31,12 @@ using namespace llvm;
 using namespace llvm::mctoll;
 using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
 
-
-std::string
-RISCV64MachineInstructionUtils::getRegName(unsigned int RegNo) {
+std::string RISCV64MachineInstructionUtils::getRegName(unsigned int RegNo) {
   return "x" + std::to_string(RegNo - RISCV::X0);
+}
+
+bool RISCV64MachineInstructionUtils::isArgReg(unsigned int RegNo) {
+  return RegNo >= RISCV::X10 && RegNo <= RISCV::X17;
 }
 
 Type *RISCV64MachineInstructionUtils::getDefaultType(LLVMContext &C,
@@ -211,48 +212,35 @@ bool RISCV64MachineInstructionUtils::isAddI(unsigned int Op) {
 
 bool RISCV64MachineInstructionUtils::isPrologInstruction(
     const MachineInstr &MI) {
-  // The following instructions are the prolog instructions we want to skip:
-  // - adjusting stack pointer (build up stack)
-  // - adjusting frame pointer
-  // - storing stack pointer
-  // - storing return address
-  auto IsAdjustStackPointerInstruction = [](const MachineInstr &MI) {
+  auto IsDecreaseStackPointerInstruction = [](const MachineInstr &MI) {
     return isAddI(MI.getOpcode()) && MI.getOperand(0).isReg() &&
            MI.getOperand(0).getReg() == RISCV::X2 && MI.getOperand(1).isReg() &&
            MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm() &&
            MI.getOperand(2).getImm() < 0;
   };
-  auto IsAdjustFramePointerInstruction = [](const MachineInstr &MI) {
-    return isAddI(MI.getOpcode()) && MI.getOperand(0).isReg() &&
-           MI.getOperand(0).getReg() == RISCV::X8 && MI.getOperand(1).isReg() &&
-           MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm();
-  };
-  return IsAdjustStackPointerInstruction(MI) ||
-         IsAdjustFramePointerInstruction(MI) || MI.getOpcode() == RISCV::C_SDSP;
+  return IsDecreaseStackPointerInstruction(MI) ||
+         MI.getOpcode() == RISCV::C_SDSP || MI.getOpcode() == RISCV::C_ADDI4SPN;
 }
 
 bool RISCV64MachineInstructionUtils::isEpilogInstruction(
     const MachineInstr &MI) {
-  // The following instructions are the epilog instructions we want to skip:
-  // - adjusting stack pointer (take down stack)
-  // - loading the frame pointer
-  // - loading the return address
-  auto IsAdjustStackPointerInstruction = [](const MachineInstr &MI) {
+  auto IsIncreaseStackPointerInstruction = [](const MachineInstr &MI) {
     return isAddI(MI.getOpcode()) && MI.getOperand(0).isReg() &&
            MI.getOperand(0).getReg() == RISCV::X2 && MI.getOperand(1).isReg() &&
            MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm() &&
            MI.getOperand(2).getImm() > 0;
   };
-  return IsAdjustStackPointerInstruction(MI) || MI.getOpcode() == RISCV::C_LDSP;
+  return IsIncreaseStackPointerInstruction(MI) ||
+         MI.getOpcode() == RISCV::C_LDSP || MI.getOpcode() == RISCV::C_ADDI16SP;
 }
 
-MachineBasicBlock::const_instr_iterator
-RISCV64MachineInstructionUtils::skipProlog(const MachineBasicBlock &MBB) {
-  auto It = MBB.instr_begin();
-  while (It != MBB.instr_end() && isPrologInstruction(*It)) {
-    ++It;
-  }
-  return It;
+bool RISCV64MachineInstructionUtils::isRegisterDefined(
+    unsigned int RegNo, MachineBasicBlock::const_instr_iterator Begin,
+    MachineBasicBlock::const_instr_iterator End) {
+  auto Pred = [&RegNo](const MachineInstr &MI) {
+    return MI.definesRegister(RegNo);
+  };
+  return std::any_of(Begin, End, Pred);
 }
 
 MachineBasicBlock::const_reverse_instr_iterator

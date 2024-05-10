@@ -53,40 +53,40 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
     // Check if the basic block calls another function. If so, only search for
     // the a0 register after that instruction, because the a0 register might be
     // defined as a function parameter.
-    auto CallIt = findInstructionByOpcode(MBB, RISCV::JAL, MBB.instr_rend());
+    auto REnd = findInstructionByOpcode(MBB, RISCV::JAL, MBB.instr_rend());
 
     // Check if basic block defines the a0 register as a return value, searching
-    // only after the last call instruction or from the beginning of the basic
-    // block if no call instruction is present.
-    auto DefineIt = findInstructionByRegNo(MBB, RISCV::X10, CallIt);
+    // only after the last call instruction (or from the beginning of the basic
+    // block if no call instruction is present).
+    auto RBegin = findInstructionByRegNo(MBB, RISCV::X10, REnd);
 
     // Return value not defined
-    if (DefineIt == CallIt) {
+    if (RBegin == REnd) {
       continue;
     }
 
-    const MachineOperand &MOp2 = DefineIt->getOperand(1);
-    assert(DefineIt->getOpcode() == RISCV::C_MV && MOp2.isReg());
+    const MachineOperand &MOp2 = RBegin->getOperand(1);
+    assert(RBegin->getOpcode() == RISCV::C_MV && MOp2.isReg());
 
     // Determine if pointer type based on the instruction which defines
-    // the register whose contents are moved to the return register. 
-    for (; DefineIt != CallIt; ++DefineIt) {
-      const MachineInstr *Prev = DefineIt->getPrevNode();
-      const MachineInstr *Next = DefineIt->getNextNode();
+    // the register whose contents are moved to the return register.
+    for (auto It = RBegin; It != REnd; ++It) {
+      const MachineInstr *Prev = It->getPrevNode();
+      const MachineInstr *Next = It->getNextNode();
       if (!Prev || !Next) {
         continue;
       }
 
-      if (DefineIt->definesRegister(MOp2.getReg())) {
+      if (It->definesRegister(MOp2.getReg())) {
         // Defining instruction loads a pointer
-        if (DefineIt->getOpcode() == RISCV::LD ||
-            DefineIt->getOpcode() == RISCV::C_LD) {
+        if (It->getOpcode() == RISCV::LD ||
+            It->getOpcode() == RISCV::C_LD) {
           return getDefaultPtrType(C);
         }
 
         // Defining instruction loads a global variable pointer
         if (Prev->getOpcode() == RISCV::AUIPC &&
-            isAddI(DefineIt->getOpcode()) &&
+            isAddI(It->getOpcode()) &&
             getInstructionType(Next->getOpcode()) != InstructionType::LOAD) {
           return getDefaultPtrType(C);
         }
@@ -113,32 +113,29 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
       continue;
     }
 
-    // Check if the instruction moves the argument to a local register or if it
-    // stores the argument on the stack. Only check the first move/store
-    // instructions after the prolog.
-    auto It = skipProlog(MBB);
-    while (It->getOpcode() == RISCV::C_MV || It->getOpcode() == RISCV::SD) {
-      // Loop over parameter registers (a0 - a7)
-      for (unsigned int RegNo = RISCV::X10; RegNo < RISCV::X17; RegNo++) {
-        // Get source operand
-        const MachineOperand &MOp1 = It->getOperand(0);
+    // Loop over instructions and check for use of argument
+    // registers whose values are not yet defined.
+    for (auto It = MBB.instr_begin(); It != MBB.instr_end(); ++It) {
+      // When an argument register, whose value is not yet defined, is moved
+      // to a local register, it must be an integral value.
+      if (It->getOpcode() == RISCV::C_MV) {
         const MachineOperand &MOp2 = It->getOperand(1);
-
-        // Parameter register is moved to local register
-        if (It->getOpcode() == RISCV::C_MV && MOp2.isReg() &&
-            MOp2.getReg() == RegNo) {
+        assert(MOp2.isReg());
+        if (isArgReg(MOp2.getReg()) &&
+            !isRegisterDefined(MOp2.getReg(), MBB.instr_begin(), It)) {
           ArgumentTypes.push_back(getDefaultIntType(C));
-          break;
-        }
-        // Parameter register is stored on stack, could be a pointer
-        // TODO: this assumption is most likely not sound
-        if (It->getOpcode() == RISCV::SD && MOp1.isReg() &&
-            MOp1.getReg() == RegNo) {
-          ArgumentTypes.push_back(getDefaultPtrType(C));
-          break;
         }
       }
-      ++It;
+      // When an argument register, whose value is not yet defined, is stored
+      // using a 64-bit store, it must be a pointer value.
+      else if (It->getOpcode() == RISCV::SD) {
+        const MachineOperand &MOp1 = It->getOperand(0);
+        assert(MOp1.isReg());
+        if (isArgReg(MOp1.getReg()) &&
+            !isRegisterDefined(MOp1.getReg(), MBB.instr_begin(), It)) {
+          ArgumentTypes.push_back(getDefaultPtrType(C));
+        }
+      }
     }
   }
 
