@@ -245,18 +245,18 @@ bool RISCV64MachineInstructionUtils::isRegisterDefined(
 
 MachineBasicBlock::const_reverse_instr_iterator
 RISCV64MachineInstructionUtils::findInstructionByOpcode(
-    const MachineBasicBlock &MBB, unsigned int Op,
-    MachineBasicBlock::const_reverse_instr_iterator EndIt) {
+    unsigned int Op, MachineBasicBlock::const_reverse_instr_iterator Begin,
+    MachineBasicBlock::const_reverse_instr_iterator End) {
   auto Pred = [&Op](const MachineInstr &MI) { return MI.getOpcode() == Op; };
-  return std::find_if(MBB.instr_rbegin(), EndIt, Pred);
+  return std::find_if(Begin, End, Pred);
 }
 
 MachineBasicBlock::const_reverse_instr_iterator
 RISCV64MachineInstructionUtils::findInstructionByRegNo(
-    const MachineBasicBlock &MBB, unsigned int RegNo,
-    MachineBasicBlock::const_reverse_instr_iterator EndIt) {
+    unsigned int RegNo, MachineBasicBlock::const_reverse_instr_iterator Begin,
+    MachineBasicBlock::const_reverse_instr_iterator End) {
   auto Pred = [&RegNo](const MachineInstr &MI) {
     return MI.definesRegister(RegNo);
   };
-  return std::find_if(MBB.instr_rbegin(), EndIt, Pred);
+  return std::find_if(Begin, End, Pred);
 }

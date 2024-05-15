@@ -22,7 +22,6 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
-#include <algorithm>
 #include <cstdint>
 #include <string>
 
@@ -100,14 +99,16 @@ bool isRegisterDefined(unsigned int RegNo,
 /// Finds the instruction in the machine basic block which has
 /// the given opcode. Only searches up until the given end iterator.
 MachineBasicBlock::const_reverse_instr_iterator
-findInstructionByOpcode(const MachineBasicBlock &MBB, unsigned int Op,
-                        MachineBasicBlock::const_reverse_instr_iterator EndIt);
+findInstructionByOpcode(unsigned int Op,
+                        MachineBasicBlock::const_reverse_instr_iterator Begin,
+                        MachineBasicBlock::const_reverse_instr_iterator End);
 
 /// Finds the instruction in the machine basic block which defines the
 /// given register number. Only searches up until the given end iterator.
 MachineBasicBlock::const_reverse_instr_iterator
-findInstructionByRegNo(const MachineBasicBlock &MBB, unsigned int RegNo,
-                       MachineBasicBlock::const_reverse_instr_iterator EndIt);
+findInstructionByRegNo(unsigned int RegNo,
+                       MachineBasicBlock::const_reverse_instr_iterator Begin,
+                       MachineBasicBlock::const_reverse_instr_iterator End);
 
 } // namespace RISCV64MachineInstructionUtils
 } // namespace mctoll
