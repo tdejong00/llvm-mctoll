@@ -451,12 +451,12 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
 
   // Create GEP instruction
   Value *GEP = nullptr;
-  if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Ptr)) {
-    Type *Ty = getDefaultType(C, *MI.getNextNode());
-    GEP = Builder.CreateInBoundsGEP(Ty, GlobalVar, Val);
-  } else if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(Ptr)) {
+  if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(Ptr)) {
     Type *Ty = GEPOp->getResultElementType();
     GEP = Builder.CreateInBoundsGEP(Ty, GEPOp, Val);
+  } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Ptr)) {
+    Type *Ty = getDefaultType(C, *MI.getNextNode());
+    GEP = Builder.CreateInBoundsGEP(Ty, GlobalVar, Val);
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Ptr)) {
     Type *Ty = getDefaultType(C, *MI.getNextNode());
     GEP = Builder.CreateInBoundsGEP(Ty, Load, Val);
@@ -538,17 +538,18 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
 
     // Determine type for GEP
     if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(ArrayPtr)) {
+      Type *Ty = GEPOp->getSourceElementType();
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(GEPOp->getSourceElementType(), ArrayPtr,
-                                      {Zero, Index});
+      Ptr = Builder.CreateInBoundsGEP(Ty, ArrayPtr, Index);
     } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr)) {
+      Type *Ty = GlobalVar->getValueType();
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), ArrayPtr,
-                                      {Zero, Index});
+      Ptr = Builder.CreateInBoundsGEP(Ty, ArrayPtr, {Zero, Index});
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
+      Type *Ty = getDefaultType(C, MI);
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr =
-          Builder.CreateInBoundsGEP(Load->getPointerOperandType(), Load, Index);
+      Value *IntToPtr = Builder.CreateIntToPtr(Load, getDefaultPtrType(C));
+      Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
     } else {
       Ptr = ArrayPtr;
     }
@@ -564,6 +565,15 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   if (MOp2.getReg() == RISCV::X8) {
     AllocaInst *Alloca = dyn_cast<AllocaInst>(Ptr);
     Ty = Alloca->getAllocatedType();
+  }
+
+  // Load instructions require an actual pointer, cast i64
+  // to ptr and offset the address using a GEP instruction.
+  if (Ptr->getType() == Type::getInt64Ty(C)) {
+    Type *Ty = getDefaultType(C, MI);
+    ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
+    Value *IntToPtr = Builder.CreateIntToPtr(Ptr, getDefaultPtrType(C));
+    Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
   }
 
   LoadInst *Load = Builder.CreateLoad(Ty, Ptr);
@@ -614,17 +624,25 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
 
     // Determine type for GEP
     if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(ArrayPtr)) {
+      Type *Ty = GEPOp->getSourceElementType();
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(GEPOp->getSourceElementType(), GEPOp,
-                                      {Zero, Index});
+      Ptr = Builder.CreateInBoundsGEP(Ty, GEPOp, Index);
     } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr)) {
+      Type *Ty = GlobalVar->getValueType();
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr = Builder.CreateInBoundsGEP(GlobalVar->getValueType(), GlobalVar,
-                                      {Zero, Index});
+      Ptr = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
+      Type *Ty = Load->getPointerOperandType();
+      // If next instruction is load, determine type from that load instruction
+      const MachineInstr *NextMI = MI.getNextNode();
+      if (NextMI != nullptr &&
+          getInstructionType(NextMI->getOpcode()) == InstructionType::LOAD) {
+        Ty = getDefaultType(C, *NextMI);
+      }
+
       ConstantInt *Index = toGEPIndex(C, MOp3.getImm());
-      Ptr =
-          Builder.CreateInBoundsGEP(Load->getPointerOperandType(), Load, Index);
+      Value *IntToPtr = Builder.CreateIntToPtr(Load, getDefaultPtrType(C));
+      Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
     } else {
       Ptr = ArrayPtr;
     }
@@ -635,9 +653,9 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
     return false;
   }
 
-  // Convert zero immediates to nullptr when storing a pointer
-  if ((MI.getOpcode() == RISCV::SD) && Val == Zero) {
-    Val = ConstantPointerNull::get(getDefaultPtrType(C));
+  // Store instructions require an actual pointer, cast i64 to ptr
+  if (Ptr->getType() == Type::getInt64Ty(C)) {
+    Ptr = Builder.CreateIntToPtr(Ptr, getDefaultPtrType(C));
   }
 
   Builder.CreateStore(Val, Ptr);
