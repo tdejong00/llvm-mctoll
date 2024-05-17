@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -10,11 +11,11 @@
 
 #include <stdio.h>
 
-unsigned long long fibonacci(unsigned N) {
-    if (N < 2) {
-        return N;
+unsigned long long fibonacci(unsigned n) {
+    if (n < 2) {
+        return n;
     }
-    return fibonacci(N - 1) + fibonacci(N - 2);
+    return fibonacci(n - 1) + fibonacci(n - 2);
 }
 
 int main(void) {

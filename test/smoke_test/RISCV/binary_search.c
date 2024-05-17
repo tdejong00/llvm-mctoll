@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -11,27 +12,27 @@
 
 int A[N] = { 2, 3, 5, 9, 13, 17, 28, 54 };
 
-int binarySearch(int A[], int L, int R, int X) {
-    while (L <= R) {
-        int M = L + (R - L) / 2;
+int binarySearch(int A[], int l, int r, int x) {
+    while (l <= r) {
+        int m = l + (r - l) / 2;
     
-        if (A[M] == X) {
-            return M;
+        if (A[m] == x) {
+            return m;
         }
-        if (A[M] < X) {
-            L = M + 1;
+        if (A[m] < x) {
+            l = m + 1;
         }
-        if (A[M] >= X) {
-            R = M - 1;
+        if (A[m] >= x) {
+            r = m - 1;
         }
     }
     return -1;
 }
 
 int main(void) {
-    int Y1 = binarySearch(A, 0, N - 1, 9);
-    int Y2 = binarySearch(A, 0, N - 1, 25);
-    printf("index: %d\n", Y1);
-    printf("index: %d\n", Y2);
+    int y1 = binarySearch(A, 0, N - 1, 9);
+    int y2 = binarySearch(A, 0, N - 1, 25);
+    printf("index: %d\n", y1);
+    printf("index: %d\n", y2);
     return 0;
 }

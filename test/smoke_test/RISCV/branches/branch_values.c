@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -7,14 +8,14 @@
 
 #include <stdio.h>
 
-int func(int X) {
-    int A = 0, B = 0;
-    if (X < 3) {
-        A = 1, B = 2;
+int func(int x) {
+    int a = 0, b = 0;
+    if (x < 3) {
+        a = 1, b = 2;
     } else {
-        A = 3, B = 4;
+        a = 3, b = 4;
     }
-    return A + B;
+    return a + b;
 }
 
 int main(void) {

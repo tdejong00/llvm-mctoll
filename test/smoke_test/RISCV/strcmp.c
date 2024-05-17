@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -o %t %s
 // RUN: llvm-mctoll -d -debug %t --include-files=/usr/include/stdio.h,/usr/include/string.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -8,14 +9,14 @@
 #include <stdio.h>
 #include <string.h>
 
-int mystrcmp(const void *S1, const void *S2) {
-  return strcmp((const char *)S1, (const char *)S2);
+int mystrcmp(const void *s1, const void *s2) {
+  return strcmp((const char *)s1, (const char *)s2);
 }
 
 int main(void) {
-    int Y1 = mystrcmp("Hello", "World");
-    int Y2 = mystrcmp("Hello", "Hello");
-    printf("Hello == World: %d\n", Y1);
-    printf("Hello == Hello: %d\n", Y2);
+    int y1 = mystrcmp("Hello", "World");
+    int y2 = mystrcmp("Hello", "Hello");
+    printf("Hello == World: %d\n", y1);
+    printf("Hello == Hello: %d\n", y2);
     return 0;
 }

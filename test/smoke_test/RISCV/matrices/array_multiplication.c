@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -14,11 +15,11 @@ int A[COLUMNS] = { 123, 234, 345 };
 int B[COLUMNS] = { 789, 891, 912 };
 
 void multiply(int M1[], int M2[]) {
-    int C = 0;
-    for (int I = 0; I < COLUMNS; I++) {
-        C += M1[I] * M2[I];
+    int c = 0;
+    for (int i = 0; i < COLUMNS; i++) {
+        c += M1[i] * M2[i];
     }
-    printf("%d\n", C);
+    printf("%d\n", c);
 }
 
 int main(void) {

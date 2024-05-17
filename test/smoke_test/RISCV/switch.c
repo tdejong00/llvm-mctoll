@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -11,8 +12,8 @@
 
 typedef enum { A, B, C } E;
 
-void func(E X) {
-    switch (X) {
+void func(E x) {
+    switch (x) {
         case A:
             printf("The quick brown\n");
             break;

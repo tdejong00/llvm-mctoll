@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -8,11 +9,11 @@
 
 #include <stdio.h>
 
-unsigned long long factorial(unsigned N) {
-    if (N == 0) {
+unsigned long long factorial(unsigned n) {
+    if (n == 0) {
         return 1;
     }
-    return N * factorial(N - 1);
+    return n * factorial(n - 1);
 }
 
 int main(void) {

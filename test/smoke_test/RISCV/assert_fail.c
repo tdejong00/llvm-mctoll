@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/assert.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -7,8 +8,8 @@
 
 #include <assert.h>
 
-void func(int X) {
-    assert(X >= 0 && "failed");
+void func(int x) {
+    assert(x >= 0 && "failed");
 }
 
 int main(void) {

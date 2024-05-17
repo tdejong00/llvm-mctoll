@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -12,8 +13,8 @@
 int A[COLUMNS] = { 1, 2, 3, 4, 5 };
 
 void display(int M[]) {
-    for (int I = 0; I < COLUMNS; I++) {
-        printf("%d ", M[I]);
+    for (int i = 0; i < COLUMNS; i++) {
+        printf("%d ", M[i]);
     }
     printf("\n");
 }

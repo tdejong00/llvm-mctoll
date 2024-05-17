@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -10,17 +11,17 @@
 #include <stdio.h>
 
 struct Test {
-    int X;
-    char C;
+    int x;
+    char c;
 };
 
 int main(void) {
-    struct Test T = { 5, 'A' };
-    printf("%d\n", T.X);
-    printf("%c\n", T.C);
-    T.X = 7;
-    T.C = 'B';
-    printf("%d\n", T.X);
-    printf("%c\n", T.C);
+    struct Test t = { 5, 'A' };
+    printf("%d\n", t.x);
+    printf("%c\n", t.c);
+    t.x = 7;
+    t.c = 'B';
+    printf("%d\n", t.x);
+    printf("%c\n", t.c);
     return 0;
 }

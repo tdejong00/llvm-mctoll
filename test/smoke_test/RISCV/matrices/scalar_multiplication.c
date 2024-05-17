@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -19,9 +20,9 @@ int A[ROWS][COLUMNS] = {
 };
 
 void multiply(int M[ROWS][COLUMNS], int S) {
-    for (int I = 0; I < ROWS; I++) {
-        for (int J = 0; J < COLUMNS; J++) {
-            printf("%d ", M[I][J] * S);
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLUMNS; j++) {
+            printf("%d ", M[i][j] * S);
         }
         printf("\n");
     }

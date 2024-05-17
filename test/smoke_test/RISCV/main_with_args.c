@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll a b c | FileCheck %s
@@ -11,8 +12,8 @@
 
 int main(int argc, char *argv[]) {
     printf("%d arguments:\n", argc);
-    for (int I = 0; I < argc; I++) {
-        printf("Argument %d: %s\n", I, argv[I]);
+    for (int i = 0; i < argc; i++) {
+        printf("Argument %d: %s\n", i, argv[i]);
     }
     return 0;
 }

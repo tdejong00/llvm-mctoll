@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -11,10 +12,10 @@
 #include <stdio.h>
 
 int main(void) {
-    int I = 0;
-    while (I < 5) {
-        printf("%d\n", I);
-        I++;
+    int i = 0;
+    while (i < 5) {
+        printf("%d\n", i);
+        i++;
     }
     return 0;
 }

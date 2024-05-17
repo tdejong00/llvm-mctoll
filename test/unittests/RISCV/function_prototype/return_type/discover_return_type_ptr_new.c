@@ -1,6 +1,8 @@
+// REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
 // RUN: llvm-mctoll -d -debug -I /usr/include/stdlib.h %t 2>&1 | FileCheck %s
-// CHECK: declare dso_local ptr @create(i32 %0)
+// CHECK: declare dso_local i64 @create(i32 %0)
 
 #include <stdlib.h>
 

@@ -1,4 +1,5 @@
 // REQUIRES: system-linux
+// REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
@@ -21,17 +22,17 @@ int A[ROWS][COLUMNS] = {
 int B[ROWS][COLUMNS];
 
 void copy(int M1[][COLUMNS], int M2[][COLUMNS]) {
-    for (int I = 0; I < ROWS; I++) {
-        for (int J = 0; J < COLUMNS; J++) {
-            M2[I][J] = M1[I][J];
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLUMNS; j++) {
+            M2[i][j] = M1[i][j];
         }
     }
 }
 
 void display(int M[][COLUMNS]) {
-    for (int I = 0; I < COLUMNS; I++) {
-        for (int J = 0; J < COLUMNS; J++) {
-            printf("%d ", M[I][J]);
+    for (int i = 0; i < COLUMNS; i++) {
+        for (int j = 0; j < COLUMNS; j++) {
+            printf("%d ", M[i][j]);
         }
         printf("\n");
     }
