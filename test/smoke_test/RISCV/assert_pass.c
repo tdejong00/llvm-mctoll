@@ -3,7 +3,7 @@
 // RUN: riscv64-linux-gnu-gcc -o %t %s
 // RUN: llvm-mctoll -d -debug %t --include-files=/usr/include/assert.h,/usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
-// CHECK: passed
+// CHECK: passedpassed
 
 #include <assert.h>
 #include <stdio.h>
