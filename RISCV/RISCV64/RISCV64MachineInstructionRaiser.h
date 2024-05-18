@@ -25,6 +25,7 @@
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
@@ -80,6 +81,20 @@ public:
   }
 
 private:
+  /// Coerces the type of the specified destination type upon the specified
+  /// value, by adding cast or convert instructions using the specified builder.
+  /// When the type of the value is already the same as the destination
+  /// type, nothing happens. Returns false when the types are not equal and
+  /// no coercion is possible.
+  bool coerceType(Value *&Val, Type *DestTy, IRBuilder<> &Builder);
+
+  /// Widens the type of either the LHS or the RHS, depending on which
+  /// is wider, by adding sign-extend instructions using the specified
+  /// builder. When the types of the two values are equal, nothing
+  /// happens. Returns false when the types are not equal and no
+  /// widening is possible.
+  bool widenType(Value *&LHS, Value *&RHS, IRBuilder<> &Builder);
+
   /// Raises the non-terminator machine instruction by calling the appropriate
   /// raise function and adds it (if applicable) to the basic block.
   bool raiseNonTerminatorInstruction(const MachineInstr &MI, int MBBNo);

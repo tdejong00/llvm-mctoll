@@ -126,7 +126,7 @@ RISCV64MachineInstructionRaiser::RISCV64MachineInstructionRaiser(
     : MachineInstructionRaiser(MF, MR, MCIR), C(MF.getFunction().getContext()),
       MCIR(MCIR), FunctionPrototypeDiscoverer(MF), ValueTracker(this),
       ELFUtils(MR, C) {
-  Zero = ConstantInt::get(getDefaultIntType(C), 0);
+  Zero = ConstantInt::get(Type::getInt64Ty(C), 0);
 }
 
 bool RISCV64MachineInstructionRaiser::raise() {
@@ -299,6 +299,72 @@ BasicBlock *RISCV64MachineInstructionRaiser::getBasicBlock(int MBBNo) {
   return BasicBlocks[MBBNo];
 }
 
+bool RISCV64MachineInstructionRaiser::coerceType(Value *&Val, Type *DestTy,
+                                                 IRBuilder<> &Builder) {
+  Type *ValTy = Val->getType();
+
+  // No coercion needed when types are the same
+  if (ValTy == DestTy) {
+    return true;
+  }
+
+  // For integer types, truncate when bigger and a sign-extend when smaller.
+  if (ValTy->isIntegerTy() && DestTy->isIntegerTy()) {
+    if (ValTy->getIntegerBitWidth() > DestTy->getIntegerBitWidth()) {
+      Val = Builder.CreateTrunc(Val, DestTy);
+    } else {
+      Val = Builder.CreateSExt(Val, DestTy);
+    }
+  }
+  // When destination type is a pointer and the current
+  // type is an i64 create a IntToPtr instruction
+  else if (ValTy == Type::getInt64Ty(C) && DestTy->isPointerTy()) {
+    Val = Builder.CreateIntToPtr(Val, DestTy);
+  }
+  // When destination type is an i64 and the current
+  // type is a pointer create a PtrToInt instruction
+  else if (ValTy->isPointerTy() && DestTy == Type::getInt64Ty(C)) {
+    Val = Builder.CreatePtrToInt(Val, DestTy);
+  }
+  // No coercion possible
+  else {
+    return false;
+  }
+
+  return true;
+}
+
+bool RISCV64MachineInstructionRaiser::widenType(Value *&LHS, Value *&RHS,
+                                                IRBuilder<> &Builder) {
+  Type *LTy = LHS->getType();
+  Type *RTy = RHS->getType();
+
+  // No widening needed when types are the same
+  if (LTy == RTy) {
+    return true;
+  }
+
+  // Widening not defined for non-integer types
+  if (!LTy->isIntegerTy() || !RTy->isIntegerTy()) {
+    return false;
+  }
+
+  // LHS is bigger than RHS, coerce type of LHS via sign extension
+  if (LTy->getIntegerBitWidth() > RTy->getIntegerBitWidth()) {
+    RHS = Builder.CreateSExt(RHS, LTy);
+  }
+  // RHS is bigger than LHS, coerce type of RHS via sign extension
+  else if (LTy->getIntegerBitWidth() < RTy->getIntegerBitWidth()) {
+    LHS = Builder.CreateSExt(LHS, RTy);
+  }
+  // No widening possible
+  else {
+    return false;
+  }
+
+  return true;
+}
+
 bool RISCV64MachineInstructionRaiser::raiseNonTerminatorInstruction(
     const MachineInstr &MI, int MBBNo) {
   InstructionType Type = getInstructionType(MI.getOpcode());
@@ -400,24 +466,12 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
     return raiseAddressOffsetInstruction(MI, Ptr, Val, MBBNo);
   }
 
-  if (LTy != RTy) {
-    // LHS is bigger than RHS, coerce type of LHS via sign extension
-    if (LTy->isIntegerTy() && RTy->isIntegerTy() &&
-        LTy->getIntegerBitWidth() > RTy->getIntegerBitWidth()) {
-      RHS = Builder.CreateSExt(RHS, LHS->getType());
-    }
-    // RHS is bigger than LHS, coerce type of RHS via sign extension
-    else if (LTy->isIntegerTy() && RTy->isIntegerTy() &&
-             LTy->getIntegerBitWidth() < RTy->getIntegerBitWidth()) {
-      LHS = Builder.CreateSExt(LHS, RHS->getType());
-    }
-    // Type mismatch
-    else {
-      printFailure(MI, "Type mismatch for binary operation");
-      LHS->dump();
-      RHS->dump();
-      return false;
-    }
+  // Type mismatch
+  if (!widenType(LHS, RHS, Builder)) {
+    printFailure(MI, "Type mismatch");
+    LHS->dump();
+    RHS->dump();
+    return false;
   }
 
   Value *Val = Builder.CreateBinOp(BinOp, LHS, RHS);
@@ -561,6 +615,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   }
 
   Type *Ty = getDefaultType(C, MI);
+
   // When loading from stack, use the allocated type
   if (MOp2.getReg() == RISCV::X8) {
     AllocaInst *Alloca = dyn_cast<AllocaInst>(Ptr);
@@ -764,27 +819,12 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
     Type *ArgTy = Args[I]->getType();
     Type *ParamTy = CalledFunctionType->getFunctionParamType(I);
 
-    if (ArgTy != ParamTy) {
-      // Coerce type of function signature for integer types
-      if (ArgTy->isIntegerTy() && ParamTy->isIntegerTy()) {
-        Args[I] = Builder.CreateSExt(Args[I], ParamTy);
-      }
-      // Coerce ptr type of function signature for i64 type
-      else if (ArgTy == Type::getInt64Ty(C) && ParamTy->isPointerTy()) {
-        Args[I] = Builder.CreateIntToPtr(Args[I], ParamTy);
-      }
-      // Coerce i64 type of function signature for ptr type
-      else if (ArgTy->isPointerTy() && ParamTy == Type::getInt64Ty(C)) {
-        Args[I] = Builder.CreatePtrToInt(Args[I], ParamTy);
-      }
-      // Type mismatch
-      else {
-        printFailure(MI, "Argument type of argument '" + std::to_string(I) +
-                             "' does not match prototype");
-        ArgTy->dump();
-        ParamTy->dump();
-        return false;
-      }
+    // Type mismatch
+    if (!coerceType(Args[I], ParamTy, Builder)) {
+      printFailure(MI, "Type mismatch");
+      ArgTy->dump();
+      ParamTy->dump();
+      return false;
     }
   }
 
@@ -805,7 +845,6 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
     Builder.CreateRetVoid();
   } else {
     Value *RetVal = getRegOrArgValue(RISCV::X10, MBBNo);
-    Type *RetValTy = RetVal->getType();
 
     if (RetVal == nullptr) {
       printFailure(MI, "Register value of return instruction not set");
@@ -813,20 +852,11 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
     }
 
     // Type mismatch
-    if (RetValTy != RetTy) {
-      // Coerce ptr type of function signature for i64 type
-      if (RetValTy == Type::getInt64Ty(C) && RetTy->isPointerTy()) {
-        RetVal = Builder.CreatePtrToInt(RetVal, RetTy);
-      }
-      // Coerce i64 type of function signature for ptr type
-      else if (RetValTy->isPointerTy() && RetTy == Type::getInt64Ty(C)) {
-        RetVal = Builder.CreatePtrToInt(RetVal, RetTy);
-      } else {
-        printFailure(MI, "Type does not match return type");
-        RetVal->getType()->dump();
-        RetTy->dump();
-        return false;
-      }
+    if (!coerceType(RetVal, RetTy, Builder)) {
+      printFailure(MI, "Type mismatch");
+      RetVal->getType()->dump();
+      RetTy->dump();
+      return false;
     }
 
     Builder.CreateRet(RetVal);
@@ -867,7 +897,7 @@ bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
   const MachineOperand &MOp2 = MI.getOperand(1);
   const MachineOperand &MOp3 = MI.getOperand(2);
 
-  // the zero register for bnez en beqz is implicit, so no second register
+  // The zero register for bnez en beqz is implicit, so no second register
   // operand. All other branch instructions have two register operands and
   // a single immediate operand.
   bool IsImplicitZero =
@@ -900,37 +930,12 @@ bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
     return false;
   }
 
-  // Convert RHS to nullptr when comparison between pointer and zero
-  if (LHS->getType()->isPointerTy() && RHS == Zero) {
-    RHS = ConstantPointerNull::get(dyn_cast<PointerType>(LHS->getType()));
-  }
-  // Coerce type of zero constant to type of LHS
-  else if (LHS->getType()->isIntegerTy() && RHS == Zero &&
-           LHS->getType() != RHS->getType()) {
-    RHS = ConstantInt::get(LHS->getType(), 0);
-  }
-
-  Type *LTy = LHS->getType();
-  Type *RTy = RHS->getType();
-
-  if (LTy != RTy) {
-    // LHS is bigger than RHS, coerce type of LHS via sign extension
-    if (LTy->isIntegerTy() && RTy->isIntegerTy() &&
-        LTy->getIntegerBitWidth() > RTy->getIntegerBitWidth()) {
-      RHS = Builder.CreateSExt(RHS, LHS->getType());
-    }
-    // RHS is bigger than LHS, coerce type of RHS via sign extension
-    else if (LTy->isIntegerTy() && RTy->isIntegerTy() &&
-             LTy->getIntegerBitWidth() < RTy->getIntegerBitWidth()) {
-      LHS = Builder.CreateSExt(LHS, RHS->getType());
-    }
-    // Type mismatch
-    else {
-      printFailure(MI, "Type mismatch for comparison operation");
-      LHS->dump();
-      RHS->dump();
-      return false;
-    }
+  // Type mismatch
+  if (!widenType(LHS, RHS, Builder)) {
+    printFailure(MI, "Type mismatch for comparison operation");
+    LHS->dump();
+    RHS->dump();
+    return false;
   }
 
   // Create compare instruction
