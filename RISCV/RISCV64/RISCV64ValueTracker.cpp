@@ -131,6 +131,9 @@ Type *RISCV64ValueTracker::getStackSlotType(
     if (ValTy->isIntegerTy() && Ty->isIntegerTy() &&
         ValTy->getIntegerBitWidth() > Ty->getIntegerBitWidth()) {
       Ty = ValTy;
+    } else if (ValTy->isIntegerTy() && Ty->isIntegerTy() &&
+        ValTy->getIntegerBitWidth() < Ty->getIntegerBitWidth()) {
+      ValTy = Ty;
     }
 
     assert(Ty == ValTy && "not all branch definitions have the same type!");

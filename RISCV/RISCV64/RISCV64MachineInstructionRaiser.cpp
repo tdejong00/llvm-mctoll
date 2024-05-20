@@ -316,6 +316,12 @@ bool RISCV64MachineInstructionRaiser::coerceType(Value *&Val, Type *DestTy,
       Val = Builder.CreateSExt(Val, DestTy);
     }
   }
+  // When destination type is a pointer an the current type is an integer
+  // value of zero, convert to nullptr
+  else if (DestTy->isPointerTy() && isa<ConstantInt>(Val) &&
+           dyn_cast<ConstantInt>(Val)->getValue().isZero()) {
+    Val = ConstantPointerNull::get(dyn_cast<PointerType>(DestTy));
+  }
   // When destination type is a pointer and the current
   // type is an i64 create a IntToPtr instruction
   else if (ValTy == Type::getInt64Ty(C) && DestTy->isPointerTy()) {
@@ -468,7 +474,7 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
 
   // Type mismatch
   if (!widenType(LHS, RHS, Builder)) {
-    printFailure(MI, "Type mismatch");
+    printFailure(MI, "Type mismatch for binary operation");
     LHS->dump();
     RHS->dump();
     return false;
@@ -821,7 +827,7 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
 
     // Type mismatch
     if (!coerceType(Args[I], ParamTy, Builder)) {
-      printFailure(MI, "Type mismatch");
+      printFailure(MI, "Type mismatch for call instruction");
       ArgTy->dump();
       ParamTy->dump();
       return false;
@@ -853,7 +859,7 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
 
     // Type mismatch
     if (!coerceType(RetVal, RetTy, Builder)) {
-      printFailure(MI, "Type mismatch");
+      printFailure(MI, "Type mismatch for return instruction");
       RetVal->getType()->dump();
       RetTy->dump();
       return false;
@@ -928,6 +934,12 @@ bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
   if (LHS == nullptr) {
     printFailure(MI, "LHS of branch instruction is not set");
     return false;
+  }
+
+  // Convert RHS to nullptr when comparison with zero when LHS is a pointer
+  if (LHS->getType()->isPointerTy() && isa<ConstantInt>(RHS) &&
+      dyn_cast<ConstantInt>(RHS)->getValue().isZero()) {
+    RHS = ConstantPointerNull::get(dyn_cast<PointerType>(LHS->getType()));
   }
 
   // Type mismatch
