@@ -57,8 +57,8 @@ PointerType *RISCV64MachineInstructionUtils::getDefaultPtrType(LLVMContext &C) {
 }
 
 ConstantInt *RISCV64MachineInstructionUtils::toGEPIndex(LLVMContext &C,
-                                                        uint64_t Offset) {
-  IntegerType *Ty = getDefaultIntType(C);
+                                                        uint64_t Offset,
+                                                        IntegerType *Ty) {
   unsigned int Width = Ty->getBitWidth() / 8;
 
   // Make sure offset is a multiple of Width

@@ -68,8 +68,9 @@ bool isArgReg(unsigned int RegNo);
 
 /// Creates a ConstantInt representing a GEP index, based on the given pointer
 /// offset (number of bytes). The operands of the GEP instructions represent
-/// indices and not number of bytes.
-ConstantInt *toGEPIndex(LLVMContext &C, uint64_t Offset);
+/// indices and not number of bytes. The specified type is used for determining
+/// the integer bit width.
+ConstantInt *toGEPIndex(LLVMContext &C, uint64_t Offset, IntegerType *Ty);
 
 /// Determines the instruction type of the opcode.
 InstructionType getInstructionType(unsigned int Op);
