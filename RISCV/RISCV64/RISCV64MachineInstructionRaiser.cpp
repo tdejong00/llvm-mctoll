@@ -444,7 +444,7 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
 
   // Instructions like `addi s0,$` should load value at stack offset
   if (BinOp == BinaryOps::Add && MOp2.getReg() == RISCV::X8 && MOp3.isImm()) {
-    Value *StackValue = ValueTracker.getStackValue(MOp3.getImm());
+    Value *StackValue = ValueTracker.getStackSlot(MOp3.getImm());
     ValueTracker.setRegValue(MBBNo, MOp1.getReg(), StackValue);
     return true;
   }
@@ -568,21 +568,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   // Load from stack
   if (MOp2.getReg() == RISCV::X8) {
     int64_t StackOffset = MOp3.getImm();
-    Ptr = ValueTracker.getStackValue(StackOffset);
-    // When no value found at the specified stack offset, the instruction
-    // might be accessing the pointer stored at the previous stack value
-    if (Ptr == nullptr) {
-      Value *ArrayPtr = ValueTracker.getStackValue(StackOffset - 4);
-      if (ArrayPtr == nullptr || !isa<GEPOperator>(ArrayPtr) ||
-          !isa<GlobalVariable>(ArrayPtr)) {
-        printFailure(MI, "Stack value of load instruction not set");
-        return false;
-      }
-
-      Type *ArrayTy = ArrayType::get(Type::getInt8Ty(C), 8);
-      ConstantInt *Index = ConstantInt::get(getDefaultIntType(C), 4);
-      Ptr = Builder.CreateInBoundsGEP(ArrayTy, ArrayPtr, {Zero, Index});
-    }
+    Ptr = ValueTracker.getStackSlot(StackOffset);
   }
   // Load from address specified in register
   else if (MOp3.getImm() == 0) {
@@ -664,12 +650,7 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
   Value *Ptr = nullptr;
   // Store to stack
   if (MOp2.getReg() == RISCV::X8) {
-    Ptr = ValueTracker.getStackValue(MOp3.getImm());
-    // Check if already allocated, allocate if not
-    if (Ptr == nullptr) {
-      Ptr = Builder.CreateAlloca(Val->getType());
-      ValueTracker.setStackValue(MOp3.getImm(), Ptr);
-    }
+    Ptr = ValueTracker.getStackSlot(MOp3.getImm(), Val->getType());
   }
   // Store to address specified in register
   else if (MOp3.getImm() == 0) {

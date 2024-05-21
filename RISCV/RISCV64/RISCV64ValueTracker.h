@@ -17,6 +17,7 @@
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Value.h"
 #include <unordered_map>
 
@@ -42,7 +43,7 @@ public:
   RISCV64ValueTracker(RISCV64MachineInstructionRaiser *MIR);
 
   /// Gets the SSA value currently assigned to the specified register, by first
-  /// looking for a local definition. If the register is not defined in the 
+  /// looking for a local definition. If the register is not defined in the
   /// specified basic block, looks at the predecessors for a definition.
   /// When all predecessors define the specified register, the register
   /// is promoted to a stack slot, all predecessors will store to that stack
@@ -52,11 +53,10 @@ public:
   /// Sets the SSA value currently assigned to the specified register.
   void setRegValue(int MBBNo, unsigned int RegNo, Value *Val);
 
-  /// Gets the SSA value currently assigned to the specified stack slot.
-  Value *getStackValue(int StackOffset);
-
-  /// Sets the SSA value currently assigned to the specified stack slot.
-  void setStackValue(int StackOffset, Value *Val);
+  /// Gets the AllocaInst currently functioning as the specified stack slot.
+  /// When the stack slot does not yet exist, it is created using the specified
+  /// type. If the type is not specified, i64 is used by default.
+  Value *getStackSlot(int StackOffset, Type *AllocaTy = nullptr);
 
 private:
   /// Returns the last instruction which defines the register,
@@ -66,11 +66,11 @@ private:
 
   /// Returns the register definitions for the specified register
   /// made by the predecessors of the specified basic block.
-  std::vector<RegisterDefinition>
-  getDefinitions(unsigned int RegNo, const MachineBasicBlock *MBB);
+  std::vector<RegisterDefinition> getDefinitions(unsigned int RegNo,
+                                                 const MachineBasicBlock *MBB);
 
   /// Determines the type for the stack slot for the promoted register
-  /// based on the different definitions of the branches. 
+  /// based on the different definitions of the branches.
   Type *getStackSlotType(const std::vector<RegisterDefinition> &Defs);
 
   RISCV64MachineInstructionRaiser *MIR;
@@ -85,7 +85,8 @@ private:
   /// map to facilitate different values for branches.
   MBBRegisterValuesMap MBBRegValues;
 
-  /// Mapping from stack offset to current value assigned to stack slot.
+  /// Mapping from stack offset to the current
+  /// AllocaInst representing the stack slot.
   std::unordered_map<int, Value *> StackValues;
 };
 

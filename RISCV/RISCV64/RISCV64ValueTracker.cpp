@@ -67,8 +67,7 @@ Value *RISCV64ValueTracker::getRegValue(int MBBNo, unsigned int RegNo) {
     // promotion needed, return value defined by that predecessor
     else if (Defs.size() == 1) {
       RegVal = Defs.at(0).Val;
-    } 
-    else if (Defs.size() != 0) {
+    } else if (Defs.size() != 0) {
       errs() << "unexpected number of definitions by predecessors\n";
     }
   }
@@ -81,12 +80,20 @@ void RISCV64ValueTracker::setRegValue(int MBBNo, unsigned int RegNo,
   MBBRegValues[MBBNo][RegNo] = Val;
 }
 
-Value *RISCV64ValueTracker::getStackValue(int StackOffset) {
-  return StackValues[StackOffset];
-}
+Value *RISCV64ValueTracker::getStackSlot(int StackOffset, Type *AllocaTy) {
+  if (AllocaTy == nullptr) {
+    AllocaTy = Type::getInt64Ty(C);
+  }
 
-void RISCV64ValueTracker::setStackValue(int StackOffset, Value *Val) {
-  StackValues[StackOffset] = Val;
+  if (StackValues[StackOffset] == nullptr) {
+    BasicBlock *EntryBB = MIR->getBasicBlock(0);
+    IRBuilder<> EntryBuilder(EntryBB);
+
+    AllocaInst *Alloca = EntryBuilder.CreateAlloca(AllocaTy);
+    StackValues[StackOffset] = Alloca;
+  }
+
+  return StackValues[StackOffset];
 }
 
 MachineBasicBlock::const_reverse_instr_iterator
@@ -132,7 +139,7 @@ Type *RISCV64ValueTracker::getStackSlotType(
         ValTy->getIntegerBitWidth() > Ty->getIntegerBitWidth()) {
       Ty = ValTy;
     } else if (ValTy->isIntegerTy() && Ty->isIntegerTy() &&
-        ValTy->getIntegerBitWidth() < Ty->getIntegerBitWidth()) {
+               ValTy->getIntegerBitWidth() < Ty->getIntegerBitWidth()) {
       ValTy = Ty;
     }
 
