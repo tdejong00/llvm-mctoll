@@ -218,8 +218,17 @@ bool RISCV64MachineInstructionUtils::isPrologInstruction(
            MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm() &&
            MI.getOperand(2).getImm() < 0;
   };
-  return IsDecreaseStackPointerInstruction(MI) ||
-         MI.getOpcode() == RISCV::C_SDSP || MI.getOpcode() == RISCV::C_ADDI4SPN;
+  auto IsStoreReturnAddress = [](const MachineInstr &MI) {
+    return getInstructionType(MI.getOpcode()) == InstructionType::STORE &&
+           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == RISCV::X1;
+  };
+  auto IsStoreStackPointer = [](const MachineInstr &MI) {
+    return getInstructionType(MI.getOpcode()) == InstructionType::STORE &&
+           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == RISCV::X8;
+  };
+  return IsDecreaseStackPointerInstruction(MI) || IsStoreReturnAddress(MI) ||
+         IsStoreStackPointer(MI) || MI.getOpcode() == RISCV::C_SDSP ||
+         MI.getOpcode() == RISCV::C_ADDI4SPN;
 }
 
 bool RISCV64MachineInstructionUtils::isEpilogInstruction(
@@ -230,8 +239,17 @@ bool RISCV64MachineInstructionUtils::isEpilogInstruction(
            MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm() &&
            MI.getOperand(2).getImm() > 0;
   };
-  return IsIncreaseStackPointerInstruction(MI) ||
-         MI.getOpcode() == RISCV::C_LDSP || MI.getOpcode() == RISCV::C_ADDI16SP;
+  auto IsLoadReturnAddress = [](const MachineInstr &MI) {
+    return getInstructionType(MI.getOpcode()) == InstructionType::LOAD &&
+           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == RISCV::X1;
+  };
+  auto IsLoadStackPointer = [](const MachineInstr &MI) {
+    return getInstructionType(MI.getOpcode()) == InstructionType::LOAD &&
+           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == RISCV::X8;
+  };
+  return IsIncreaseStackPointerInstruction(MI) || IsLoadReturnAddress(MI) ||
+         IsLoadStackPointer(MI) || MI.getOpcode() == RISCV::C_LDSP ||
+         MI.getOpcode() == RISCV::C_ADDI16SP;
 }
 
 bool RISCV64MachineInstructionUtils::isRegisterDefined(
