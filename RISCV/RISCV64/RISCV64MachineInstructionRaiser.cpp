@@ -731,36 +731,46 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
 
   const MachineInstr *NextMI = MI.getNextNode();
 
-  if (NextMI->getOpcode() != RISCV::ADDI) {
-    printFailure(MI, "Expected instruction after AUIPC to be ADDI");
+  if (NextMI->getOpcode() != RISCV::ADDI && NextMI->getOpcode() != RISCV::LD) {
+    printFailure(MI, "Expected instruction after AUIPC to be ADDI or LD");
     return false;
   }
 
   const MachineOperand &AUIPCMOp2 = MI.getOperand(1);
-  const MachineOperand &ADDIMOp1 = NextMI->getOperand(0);
-  const MachineOperand &ADDIMOp3 = NextMI->getOperand(2);
+  const MachineOperand &NextMOp1 = NextMI->getOperand(0);
+  const MachineOperand &NextMOp3 = NextMI->getOperand(2);
 
-  assert(AUIPCMOp2.isImm() && ADDIMOp1.isReg() && ADDIMOp3.isImm());
+  assert(AUIPCMOp2.isImm() && NextMOp1.isReg() && NextMOp3.isImm());
 
-  // auipc offset is shifted left by 12 bits
+  // AUIPC offset is shifted left by 12 bits
   uint64_t PCOffset = AUIPCMOp2.getImm() << 12;
 
   // Determine offset
   uint64_t InstOffset = MCIR->getMCInstIndex(MI);
   uint64_t TextOffset = MR->getTextSectionAddress();
-  int64_t ValueOffset = ADDIMOp3.getImm();
+  int64_t ValueOffset = NextMOp3.getImm();
+
+  uint64_t Offset = InstOffset + TextOffset + ValueOffset;
+  if (NextMI->getOpcode() == RISCV::LD) {
+    Offset += PCOffset;
+  }
+
+  // First attempt dynamic relocation
+  GlobalVariable *GlobalVar = ELFUtils.getDynRelocValueAtOffset(Offset);
+  if (GlobalVar != nullptr) {
+    ValueTracker.setRegValue(MBBNo, NextMOp1.getReg(), GlobalVar);
+    return true;
+  }
 
   // First attempt .rodata
-  uint64_t RODataOffset = InstOffset + TextOffset + ValueOffset;
   Value *Index = nullptr;
-  GlobalVariable *GlobalVar =
-      ELFUtils.getRODataValueAtOffset(RODataOffset, Index);
+  GlobalVar = ELFUtils.getRODataValueAtOffset(Offset, Index);
 
   // Found in .rodata, create getelementptr instruction
   if (GlobalVar != nullptr) {
     Type *Ty = GlobalVar->getValueType();
     Value *GEP = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
-    ValueTracker.setRegValue(MBBNo, ADDIMOp1.getReg(), GEP);
+    ValueTracker.setRegValue(MBBNo, NextMOp1.getReg(), GEP);
     return true;
   }
 
@@ -774,7 +784,7 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
   }
 
   // Found in .data
-  ValueTracker.setRegValue(MBBNo, ADDIMOp1.getReg(), GlobalVar);
+  ValueTracker.setRegValue(MBBNo, NextMOp1.getReg(), GlobalVar);
 
   return true;
 }

@@ -73,12 +73,15 @@ public:
   /// calculated as the given offset minus the address of the found section.
   /// Returns null when the section could not be found or the contens of the
   /// section are empty.
-  GlobalVariable *getRODataValueAtOffset(uint64_t Offset,
-                                         Value *&Index) const;
+  GlobalVariable *getRODataValueAtOffset(uint64_t Offset, Value *&Index) const;
 
   /// Gets the value located in the .data ELF section at the given offset
   /// and creates a corresponding global variable.
   GlobalVariable *getDataValueAtOffset(uint64_t Offset) const;
+
+  /// Gets the value located in the dynamic relocations of the ELF at the
+  /// given offset and creates a corresponding global variable.
+  GlobalVariable *getDynRelocValueAtOffset(uint64_t Offset) const;
 
 private:
   const ModuleRaiser *MR;
