@@ -593,7 +593,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
       Ptr = Builder.CreateInBoundsGEP(Ty, ArrayPtr, {Zero, Index});
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
       Type *Ty = getDefaultType(C, MI);
-      ConstantInt *Index = toGEPIndex(C, MOp3.getImm(), Type::getInt64Ty(C));
+      ConstantInt *Index = toGEPIndex(C, MOp3.getImm(), getDefaultIntType(C));
       Value *IntToPtr = Builder.CreateIntToPtr(Load, getDefaultPtrType(C));
       Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
     } else {
@@ -682,7 +682,7 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
         Ty = getDefaultType(C, *NextMI);
       }
 
-      ConstantInt *Index = toGEPIndex(C, MOp3.getImm(), Type::getInt64Ty(C));
+      ConstantInt *Index = toGEPIndex(C, MOp3.getImm(), getDefaultIntType(C));
       Value *IntToPtr = Builder.CreateIntToPtr(Load, getDefaultPtrType(C));
       Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
     } else {

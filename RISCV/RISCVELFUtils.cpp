@@ -101,37 +101,34 @@ RISCVELFUtils::getRelocationAtOffset(uint64_t Offset) const {
     return nullptr;
   }
 
-  // Disassemble instruction
   MCInst Instruction;
   uint64_t InstructionSize;
   uint64_t InstructionOffset = Offset;
-  bool Success = MR->getMCDisassembler()->getInstruction(
+  bool Success = false;
+
+  // Disassemble AUIPC instruction
+  Success = MR->getMCDisassembler()->getInstruction(
       Instruction, InstructionSize,
       SectionContents.slice(InstructionOffset - Section.getAddress()),
       InstructionOffset, nulls());
-  assert(Success && "Failed to disassemble instruction in PLT");
+  assert(Success && "Failed to disassemble AUIPC instruction in PLT");
+  assert(Instruction.getOpcode() == RISCV::AUIPC &&
+         "expected AUIPC instruction");
 
-  // If first instruction is AUIPC, skip to the next instruction
-  if (Instruction.getOpcode() == RISCV::AUIPC) {
-    Success = MR->getMCDisassembler()->getInstruction(
-        Instruction, InstructionSize,
-        SectionContents.slice(InstructionOffset + InstructionSize -
-                              Section.getAddress()),
-        InstructionOffset, nulls());
-    assert(Success && "Failed to disassemble instruction in PLT");
-  }
+  uint64_t AUIPCOffset = Instruction.getOperand(1).getImm() << 12;
 
-  const MCOperand &MOp1 = Instruction.getOperand(0);
-  const MCOperand &MOp2 = Instruction.getOperand(1);
-  const MCOperand &MOp3 = Instruction.getOperand(2);
+  // Disassemble LD instruction
+  Success = MR->getMCDisassembler()->getInstruction(
+      Instruction, InstructionSize,
+      SectionContents.slice(InstructionOffset + InstructionSize -
+                            Section.getAddress()),
+      InstructionOffset, nulls());
+  assert(Success && "Failed to disassemble LD instruction in PLT");
+  assert(Instruction.getOpcode() == RISCV::LD && "expected LD instruction");
 
-  assert(MOp1.isReg() && MOp2.isReg() && MOp3.isImm());
+  int64_t LDOffset = Instruction.getOperand(2).getImm();
 
-  int64_t PCOffset = MOp3.getImm();
-
-  // Calculate offset of relocated function
-  // TODO: hardcoded offset 0x2000 is probably not correct
-  uint64_t RelocationOffset = InstructionOffset + PCOffset + 0x2000;
+  uint64_t RelocationOffset = InstructionOffset + AUIPCOffset + LDOffset;
 
   return MR->getDynRelocAtOffset(RelocationOffset);
 }
