@@ -40,19 +40,19 @@ const uint64_t DoubleWordAlign = 8;
 const uint64_t SingleWordAlign = 4;
 
 /// Represents different instruction types.
-enum class InstructionType {
-  NOP,
-  BINOP,
-  MOVE,
-  LOAD,
-  STORE,
-  GLOBAL,
-  CALL,
-  RETURN,
-  UNCONDITIONAL_BRANCH,
-  CONDITIONAL_BRANCH,
-  UNKNOWN
-};
+// enum class InstructionType {
+//   NOP,
+//   BINOP,
+//   MOVE,
+//   LOAD,
+//   STORE,
+//   GLOBAL,
+//   CALL,
+//   RETURN,
+//   UNCONDITIONAL_BRANCH,
+//   CONDITIONAL_BRANCH,
+//   UNKNOWN
+// };
 
 /// Gets the default type for machine instruction using the given LLVM context,
 /// based on if the given machine instruction loads or stores a pointer.
@@ -81,16 +81,22 @@ uint64_t getAlign(unsigned int Op);
 ConstantInt *toGEPIndex(LLVMContext &C, uint64_t Offset, uint64_t Align);
 
 /// Determines the instruction type of the opcode.
-InstructionType getInstructionType(unsigned int Op);
+// InstructionType getInstructionType(unsigned int Op);
+
+/// Determines whether the opcode represents an add immediate instruction.
+bool isAddI(unsigned int Op);
+
+/// Determines whether the opcode represents a load instruction.
+bool isLoad(unsigned int Op);
+
+/// Determines whether the opcode represents a store instruction.
+bool isStore(unsigned int Op);
 
 /// Converts the opcode to a binary operation.
 BinaryOps toBinaryOperation(unsigned int Op);
 
 /// Converts the opcode to a compare predicate.
 Predicate toPredicate(unsigned int Op);
-
-/// Determines whether the opcode is an ADDI instruction.
-bool isAddI(unsigned int Op);
 
 /// Determines whether the machine instruction is a part of the prolog.
 bool isPrologInstruction(const MachineInstr &MI);

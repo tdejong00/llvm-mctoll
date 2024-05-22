@@ -24,7 +24,6 @@
 #include "RISCVModuleRaiser.h"
 #include "Raiser/MachineFunctionRaiser.h"
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
@@ -154,31 +153,17 @@ bool RISCV64MachineInstructionRaiser::raise() {
 
     // Loop over machine instructions of basic block and raise each instruction.
     for (const MachineInstr &MI : MBB->instrs()) {
-      bool WasAUIPC = MI.getPrevNode() != nullptr &&
-                      MI.getPrevNode()->getOpcode() == AUIPC;
-
-      // Skip raising of prolog and epilog instructions,
-      // as these do not contain any needed information
-      if (isPrologInstruction(MI)) {
-        printSkipped(MI, "Skipped raising of prolog instruction");
-        continue;
-      }
-      if (isEpilogInstruction(MI)) {
-        printSkipped(MI, "Skipped raising of epilog instruction");
-        continue;
-      }
-
       // The instruction after an AUIPC is already handled
-      //  during raising of the AUIPC instrucion.
-      if (WasAUIPC) {
+      //  during raising of the AUIPC instruction.
+      if (MI.getPrevNode() != nullptr &&
+          MI.getPrevNode()->getOpcode() == AUIPC) {
         printSkipped(MI, "Already raised by previous instruction");
         continue;
       }
 
       // Skip raising terminator instructions, record
       // register values for use in second pass
-      if (MI.isTerminator() &&
-          getInstructionType(MI.getOpcode()) != InstructionType::RETURN) {
+      if (MI.isTerminator() && MI.getOpcode() != C_JR) {
         printSkipped(MI, "Skipped raising terminator instruction");
 
         // Record information about terminator instruction for use in later pass
@@ -187,12 +172,11 @@ bool RISCV64MachineInstructionRaiser::raise() {
         Info->CandidateMachineInstr = &MI;
         for (unsigned int I = 0; I < MI.getNumOperands(); I++) {
           const MachineOperand &MOp = MI.getOperand(I);
+          Value *RegValue = nullptr;
           if (MOp.isReg()) {
-            Value *RegValue = getRegOrArgValue(MOp.getReg(), MBB->getNumber());
-            Info->RegValues.push_back(RegValue);
-          } else {
-            Info->RegValues.push_back(nullptr);
+            RegValue = getRegOrArgValue(MOp.getReg(), MBB->getNumber());
           }
+          Info->RegValues.push_back(RegValue);
         }
         CTInfo.push_back(Info);
 
@@ -200,7 +184,7 @@ bool RISCV64MachineInstructionRaiser::raise() {
       }
 
       // Raise non-terminator instruction
-      if (raiseNonTerminatorInstruction(MI, MBB->getNumber())) {
+      if (raiseNonTerminator(MI, MBB->getNumber())) {
         printSuccess(MI);
       }
     }
@@ -239,7 +223,7 @@ bool RISCV64MachineInstructionRaiser::raise() {
                              });
       assert(It != CTInfo.end() && "Control Transfer Info not recorded");
 
-      if (raiseTerminatorInstruction(*It)) {
+      if (raiseTerminator(*It)) {
         printSuccess(MI);
       }
 
@@ -372,64 +356,67 @@ bool RISCV64MachineInstructionRaiser::widenType(Value *&LHS, Value *&RHS,
   return true;
 }
 
-bool RISCV64MachineInstructionRaiser::raiseNonTerminatorInstruction(
-    const MachineInstr &MI, int MBBNo) {
-  InstructionType Type = getInstructionType(MI.getOpcode());
+bool RISCV64MachineInstructionRaiser::raiseNonTerminator(const MachineInstr &MI,
+                                                         int MBBNo) {
+  unsigned int Op = MI.getOpcode();
 
-  assert(Type != InstructionType::UNCONDITIONAL_BRANCH &&
-         Type != InstructionType::CONDITIONAL_BRANCH);
-
-  if (Type == InstructionType::BINOP) {
-    BinaryOps BinOp = toBinaryOperation(MI.getOpcode());
-
-    if (BinOp == BinaryOps::BinaryOpsEnd) {
-      printFailure(MI, "Unimplemented or unknown binary operation");
-      return false;
-    }
-
+  BinaryOps BinOp = toBinaryOperation(Op);
+  if (BinOp != BinaryOps::BinaryOpsEnd) {
     return raiseBinaryOperation(BinOp, MI, MBBNo);
   }
 
-  switch (Type) {
-  case InstructionType::NOP:
+  switch (Op) {
+  case C_NOP:
     return true;
-  case InstructionType::MOVE:
-    return raiseMoveInstruction(MI, MBBNo);
-  case InstructionType::LOAD:
-    return raiseLoadInstruction(MI, MBBNo);
-  case InstructionType::STORE:
-    return raiseStoreInstruction(MI, MBBNo);
-  case InstructionType::GLOBAL:
-    return raiseGlobalInstruction(MI, MBBNo);
-  case InstructionType::CALL:
-    return raiseCallInstruction(MI, MBBNo);
-  case InstructionType::RETURN:
-    return raiseReturnInstruction(MI, MBBNo);
+  case C_MV:
+  case C_LI:
+    return raiseMove(MI, MBBNo);
+  case LB:
+  case LBU:
+  case LH:
+  case LHU:
+  case LW:
+  case LWU:
+  case LD:
+  case C_LW:
+  case C_LD:
+    return raiseLoad(MI, MBBNo);
+  case SB:
+  case SH:
+  case SW:
+  case SD:
+  case C_SW:
+  case C_SD:
+    return raiseStore(MI, MBBNo);
+  case AUIPC:
+    return raisePCRelativeAccess(MI, MBBNo);
+  case JAL:
+    return raiseCall(MI, MBBNo);
+  case C_JR:
+    return raiseReturn(MI, MBBNo);
   default:
-    printFailure(MI, "Unimplemented or unknown instruction");
+    printFailure(MI, "Unimplemented or unknown non-terminator instruction");
     return false;
   }
 }
 
-bool RISCV64MachineInstructionRaiser::raiseTerminatorInstruction(
+bool RISCV64MachineInstructionRaiser::raiseTerminator(
     ControlTransferInfo *Info) {
   const MachineInstr *MI = Info->CandidateMachineInstr;
-  InstructionType Type = getInstructionType(MI->getOpcode());
+  unsigned int Op = MI->getOpcode();
 
-  assert(Type == InstructionType::UNCONDITIONAL_BRANCH ||
-         Type == InstructionType::CONDITIONAL_BRANCH);
+  if (Op == C_J) {
+    return raiseUnconditonalBranch(Info);
+  }
 
-  switch (Type) {
-  case InstructionType::UNCONDITIONAL_BRANCH:
-    return raiseUnconditonalBranchInstruction(Info);
-  case InstructionType::CONDITIONAL_BRANCH: {
-    Predicate Pred = toPredicate(MI->getOpcode());
-    return raiseConditionalBranchInstruction(Pred, Info);
+  Predicate Pred = toPredicate(Op);
+
+  if (Pred != Predicate::BAD_ICMP_PREDICATE) {
+    return raiseConditionalBranch(Pred, Info);
   }
-  default:
-    printFailure(*MI, "Unimplemented or unknown instruction");
-    return false;
-  }
+
+  printFailure(*MI, "Unimplemented or unknown terminator instruction");
+  return false;
 }
 
 bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
@@ -450,15 +437,17 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
     return true;
   }
 
+  // Get left-hand side value
   Value *LHS = getRegOrArgValue(MOp2.getReg(), MBBNo);
   if (LHS == nullptr) {
-    printFailure(MI, "LHS value of add instruction not set");
+    printFailure(MI, "LHS value of binary operation not set");
     return false;
   }
 
+  // Get right-hand side value
   Value *RHS = getRegOrImmValue(MOp3, MBBNo);
   if (RHS == nullptr) {
-    printFailure(MI, "RHS value of add instruction not set");
+    printFailure(MI, "RHS value of binary operation not set");
     return false;
   }
 
@@ -481,6 +470,7 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
     return false;
   }
 
+  // Create binary operation instruction and assign to destination register
   Value *Val = Builder.CreateBinOp(BinOp, LHS, RHS);
   ValueTracker.setRegValue(MBBNo, MOp1.getReg(), Val);
 
@@ -496,6 +486,7 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
   assert(!Val->getType()->isPointerTy() && "expected an integral type");
 
   const MachineOperand &MOp1 = MI.getOperand(0);
+
   assert(MOp1.isReg());
 
   // Remove unnecessary Shl instructions for array accesses, because the
@@ -526,13 +517,14 @@ bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
     return false;
   }
 
+  // Assign created GEP to destination register
   ValueTracker.setRegValue(MBBNo, MOp1.getReg(), GEP);
 
   return true;
 }
 
-bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
-    const MachineInstr &MI, int MBBNo) {
+bool RISCV64MachineInstructionRaiser::raiseMove(const MachineInstr &MI,
+                                                int MBBNo) {
   BasicBlock *BB = getBasicBlock(MBBNo);
   IRBuilder<> Builder(BB);
 
@@ -542,19 +534,19 @@ bool RISCV64MachineInstructionRaiser::raiseMoveInstruction(
   assert(MOp1.isReg() && (MOp2.isReg() || MOp2.isImm()));
 
   Value *Val = getRegOrImmValue(MOp2, MBBNo);
-
   if (Val == nullptr) {
     printFailure(MI, "Register value of move instruction not set");
     return false;
   }
 
+  // Assign value to destination register
   ValueTracker.setRegValue(MBBNo, MOp1.getReg(), Val);
 
   return true;
 }
 
-bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
-    const MachineInstr &MI, int MBBNo) {
+bool RISCV64MachineInstructionRaiser::raiseLoad(const MachineInstr &MI,
+                                                int MBBNo) {
   BasicBlock *BB = getBasicBlock(MBBNo);
   IRBuilder<> Builder(BB);
 
@@ -575,7 +567,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   else if (MOp3.getImm() == 0) {
     Ptr = getRegOrArgValue(MOp2.getReg(), MBBNo);
   }
-  // Load from array
+  // Load from array or pointer
   else {
     Value *ArrayPtr = getRegOrArgValue(MOp2.getReg(), MBBNo);
     if (ArrayPtr == nullptr) {
@@ -627,14 +619,15 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
     Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
   }
 
+  // Create load instruction and assign to destination register
   LoadInst *Load = Builder.CreateLoad(Ty, Ptr);
   ValueTracker.setRegValue(MBBNo, MOp1.getReg(), Load);
 
   return true;
 }
 
-bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
-    const MachineInstr &MI, int MBBNo) {
+bool RISCV64MachineInstructionRaiser::raiseStore(const MachineInstr &MI,
+                                                 int MBBNo) {
   BasicBlock *BB = getBasicBlock(MBBNo);
   IRBuilder<> Builder(BB);
 
@@ -683,8 +676,7 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
       Type *Ty = Load->getPointerOperandType();
       // If next instruction is load, determine type from that load instruction
       const MachineInstr *NextMI = MI.getNextNode();
-      if (NextMI != nullptr &&
-          getInstructionType(NextMI->getOpcode()) == InstructionType::LOAD) {
+      if (NextMI != nullptr && isLoad(NextMI->getOpcode())) {
         Ty = getDefaultType(C, *NextMI);
       }
 
@@ -707,54 +699,44 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
     Ptr = Builder.CreateIntToPtr(Ptr, getDefaultPtrType(C));
   }
 
+  // Create store instruction
   Builder.CreateStore(Val, Ptr);
 
   return true;
 }
 
-bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
+bool RISCV64MachineInstructionRaiser::raisePCRelativeAccess(
     const MachineInstr &MI, int MBBNo) {
   BasicBlock *BB = getBasicBlock(MBBNo);
   IRBuilder<> Builder(BB);
 
   const MachineInstr *NextMI = MI.getNextNode();
 
-  if (NextMI->getOpcode() != ADDI && NextMI->getOpcode() != LD) {
-    printFailure(MI, "Expected instruction after AUIPC to be ADDI or LD");
-    return false;
-  }
+  assert(NextMI->getOpcode() == ADDI || NextMI->getOpcode() == LD);
 
-  const MachineOperand &AUIPCMOp2 = MI.getOperand(1);
+  const MachineOperand &MOp2 = MI.getOperand(1);
   const MachineOperand &NextMOp1 = NextMI->getOperand(0);
   const MachineOperand &NextMOp3 = NextMI->getOperand(2);
 
-  assert(AUIPCMOp2.isImm() && NextMOp1.isReg() && NextMOp3.isImm());
+  assert(MOp2.isImm() && NextMOp1.isReg() && NextMOp3.isImm());
 
-  // AUIPC offset is shifted left by 12 bits
-  uint64_t PCOffset = AUIPCMOp2.getImm() << 12;
-
-  // Determine offset
+  // Compute the PC-relative offset
+  uint64_t PCOffset = MOp2.getImm() << 12;
   uint64_t InstOffset = MCIR->getMCInstIndex(MI);
   uint64_t TextOffset = MR->getTextSectionAddress();
   int64_t ValueOffset = NextMOp3.getImm();
+  uint64_t Offset = InstOffset + TextOffset + PCOffset + ValueOffset;
 
-  uint64_t Offset = InstOffset + TextOffset + ValueOffset;
-  if (NextMI->getOpcode() == LD) {
-    Offset += PCOffset;
-  }
-
-  // First attempt dynamic relocation
+  // Try to resolve the offset to a dynamic relocation
   GlobalVariable *GlobalVar = ELFUtils.getDynRelocValueAtOffset(Offset);
   if (GlobalVar != nullptr) {
     ValueTracker.setRegValue(MBBNo, NextMOp1.getReg(), GlobalVar);
     return true;
   }
 
-  // First attempt .rodata
+  // Try to resolve the offset to a .rodata section value
   Value *Index = nullptr;
   GlobalVar = ELFUtils.getRODataValueAtOffset(Offset, Index);
-
-  // Found in .rodata, create getelementptr instruction
   if (GlobalVar != nullptr) {
     Type *Ty = GlobalVar->getValueType();
     Value *GEP = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
@@ -762,28 +744,24 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
     return true;
   }
 
-  // If not at .rodata, attempt .data
-  uint64_t DataOffset = InstOffset + TextOffset + ValueOffset + PCOffset;
-  GlobalVar = ELFUtils.getDataValueAtOffset(DataOffset);
-
-  if (GlobalVar == nullptr) {
-    printFailure(MI, "Global value not found");
-    return false;
+  // Try to resolve the offset to a .data section value
+  GlobalVar = ELFUtils.getDataValueAtOffset(Offset);
+  if (GlobalVar != nullptr) {
+    ValueTracker.setRegValue(MBBNo, NextMOp1.getReg(), GlobalVar);
+    return true;
   }
 
-  // Found in .data
-  ValueTracker.setRegValue(MBBNo, NextMOp1.getReg(), GlobalVar);
-
-  return true;
+  printFailure(MI, "Global value not found");
+  return false;
 }
 
-bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
-    const MachineInstr &MI, int MBBNo) {
+bool RISCV64MachineInstructionRaiser::raiseCall(const MachineInstr &MI,
+                                                int MBBNo) {
   BasicBlock *BB = getBasicBlock(MBBNo);
   IRBuilder<> Builder(BB);
 
+  // Get function at the specified offset
   Function *CalledFunction = getCalledFunction(MI);
-
   if (CalledFunction == nullptr) {
     printFailure(MI, "Called function of call instruction not found");
     return false;
@@ -832,14 +810,15 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
     }
   }
 
+  // Create call instruction and assign to return register
   CallInst *Call = Builder.CreateCall(CalledFunction, Args);
   ValueTracker.setRegValue(MBBNo, X10, Call);
 
   return true;
 }
 
-bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
-    const MachineInstr &MI, int MBBNo) {
+bool RISCV64MachineInstructionRaiser::raiseReturn(const MachineInstr &MI,
+                                                  int MBBNo) {
   BasicBlock *BB = getBasicBlock(MBBNo);
   IRBuilder<> Builder(BB);
 
@@ -848,8 +827,8 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
   if (RetTy->isVoidTy()) {
     Builder.CreateRetVoid();
   } else {
+    // Get return value
     Value *RetVal = getRegOrArgValue(X10, MBBNo);
-
     if (RetVal == nullptr) {
       printFailure(MI, "Register value of return instruction not set");
       return false;
@@ -863,13 +842,14 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
       return false;
     }
 
+    // Create return instruction
     Builder.CreateRet(RetVal);
   }
 
   return true;
 }
 
-bool RISCV64MachineInstructionRaiser::raiseUnconditonalBranchInstruction(
+bool RISCV64MachineInstructionRaiser::raiseUnconditonalBranch(
     ControlTransferInfo *Info) {
   IRBuilder<> Builder(Info->CandidateBlock);
 
@@ -879,19 +859,20 @@ bool RISCV64MachineInstructionRaiser::raiseUnconditonalBranchInstruction(
 
   assert(MOp.isImm());
 
+  // Get basic block at specified offset
   BasicBlock *Dest = getBasicBlockAtOffset(MI, MOp.getImm());
-
   if (Dest == nullptr) {
     printFailure(MI, "A BB has not been created for the specified MBBNo");
     return false;
   }
 
+  // Create unconditional branch instruction
   Builder.CreateBr(Dest);
 
   return true;
 }
 
-bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
+bool RISCV64MachineInstructionRaiser::raiseConditionalBranch(
     Predicate Pred, ControlTransferInfo *Info) {
   IRBuilder<> Builder(Info->CandidateBlock);
 
@@ -901,33 +882,27 @@ bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
   const MachineOperand &MOp2 = MI.getOperand(1);
   const MachineOperand &MOp3 = MI.getOperand(2);
 
-  // The zero register for bnez en beqz is implicit, so no second register
-  // operand. All other branch instructions have two register operands and
-  // a single immediate operand.
-  bool IsImplicitZero =
-      MI.getOpcode() == C_BNEZ || MI.getOpcode() == C_BEQZ;
-
+  // Get righ-hand side value. Offset is either in second or third operand,
+  // depending on if the instruction has an implicit zero.
   Value *RHS = nullptr;
   uint64_t Offset;
-
-  // Offset is either in second or third operand, depending on if the
-  // instruction is one of the two zero instructions. The RHS is either
-  // a constant 0, or the value of the register of the second operand.
-  if (IsImplicitZero) {
+  if (MI.getOpcode() == C_BNEZ || MI.getOpcode() == C_BEQZ) {
     assert(MOp1.isReg() && MOp2.isImm());
     RHS = Zero;
     Offset = MOp2.getImm();
   } else {
     assert(MOp1.isReg() && MOp2.isReg() && MOp3.isImm());
     RHS = Info->RegValues[1];
+
+    if (RHS == nullptr) {
+      printFailure(MI, "RHS of branch instruction is not set");
+      return false;
+    }
+
     Offset = MOp3.getImm();
   }
 
-  if (RHS == nullptr) {
-    printFailure(MI, "RHS of branch instruction is not set");
-    return false;
-  }
-
+  // Get left-hand side value
   Value *LHS = Info->RegValues[0];
   if (LHS == nullptr) {
     printFailure(MI, "LHS of branch instruction is not set");
@@ -983,12 +958,13 @@ Function *RISCV64MachineInstructionRaiser::getCalledFunction(
   // Calculate offset of function
   uint64_t InstructionOffset = MCIR->getMCInstIndex(MI);
   int64_t TextSectionOffset = MR->getTextSectionAddress();
-  uint64_t Offset = InstructionOffset + MOp2.getImm() + TextSectionOffset;
+  int64_t RelativeOffset = MOp2.getImm();
+  uint64_t Offset = InstructionOffset + TextSectionOffset + RelativeOffset;
 
-  // First check if function is part of executable
+  // Try to resolve the offset to a raised function
   CalledFunction = MR->getRaisedFunctionAt(Offset);
 
-  // If not, use PLT section
+  // Try to resolve the offset to a function using the .plt section
   if (CalledFunction == nullptr) {
     CalledFunction = ELFUtils.getFunctionAtOffset(Offset);
   }

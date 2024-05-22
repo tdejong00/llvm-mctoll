@@ -31,6 +31,7 @@
 #include <zconf.h>
 
 using namespace llvm;
+using namespace RISCV;
 using namespace mctoll;
 
 SectionRef RISCVELFUtils::getSectionAtOffset(uint64_t Offset,
@@ -110,7 +111,7 @@ RISCVELFUtils::getRelocationAtOffset(uint64_t Offset) const {
       SectionContents.slice(InstructionOffset - Section.getAddress()),
       InstructionOffset, nulls());
   assert(Success && "Failed to disassemble AUIPC instruction in PLT");
-  assert(Instruction.getOpcode() == RISCV::AUIPC &&
+  assert(Instruction.getOpcode() == AUIPC &&
          "expected AUIPC instruction");
 
   uint64_t AUIPCOffset = Instruction.getOperand(1).getImm() << 12;
@@ -122,7 +123,7 @@ RISCVELFUtils::getRelocationAtOffset(uint64_t Offset) const {
                             Section.getAddress()),
       InstructionOffset, nulls());
   assert(Success && "Failed to disassemble LD instruction in PLT");
-  assert(Instruction.getOpcode() == RISCV::LD && "expected LD instruction");
+  assert(Instruction.getOpcode() == LD && "expected LD instruction");
 
   int64_t LDOffset = Instruction.getOperand(2).getImm();
 

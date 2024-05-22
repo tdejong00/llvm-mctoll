@@ -81,11 +81,7 @@ void RISCV64ValueTracker::setRegValue(int MBBNo, unsigned int RegNo,
 }
 
 Value *RISCV64ValueTracker::getStackSlot(int StackOffset, Type *AllocaTy) {
-  if (AllocaTy == nullptr) {
-    AllocaTy = Type::getInt64Ty(C);
-  }
-
-  if (StackValues[StackOffset] == nullptr) {
+  if (AllocaTy != nullptr && StackValues[StackOffset] == nullptr) {
     BasicBlock *EntryBB = MIR->getBasicBlock(0);
     IRBuilder<> EntryBuilder(EntryBB);
 

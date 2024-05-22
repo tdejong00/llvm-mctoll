@@ -23,7 +23,6 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
-#include "llvm/Support/Debug.h"
 #include <algorithm>
 
 #define DEBUG_TYPE "mctoll"
@@ -76,59 +75,26 @@ uint64_t RISCV64MachineInstructionRaiserUtils::getAlign(unsigned int Op) {
 ConstantInt *RISCV64MachineInstructionRaiserUtils::toGEPIndex(LLVMContext &C,
                                                               uint64_t Offset,
                                                               uint64_t Align) {
-  // Make sure offset is a multiple of Width
-  if (Offset & (Align - 1)) {
-    dbgs() << "offset " << Offset << " is not aligned to " << Align
-           << " bytes\n";
-  }
+  assert(!(Offset & (Align - 1)) && "GEP index offset is not correctly aligned");
 
   uint64_t V = Offset / Align;
 
   return ConstantInt::get(getDefaultIntType(C), V);
 }
 
-InstructionType
-RISCV64MachineInstructionRaiserUtils::getInstructionType(unsigned int Op) {
-  switch (Op) {
-  case C_NOP:
-    return InstructionType::NOP;
-  case C_LI:
-  case C_MV:
-    return InstructionType::MOVE;
-  case LB:
-  case LBU:
-  case LH:
-  case LHU:
-  case LW:
-  case LWU:
-  case LD:
-  case C_LW:
-  case C_LD:
-    return InstructionType::LOAD;
-  case SB:
-  case SH:
-  case SW:
-  case SD:
-  case C_SW:
-  case C_SD:
-    return InstructionType::STORE;
-  case AUIPC:
-    return InstructionType::GLOBAL;
-  case JAL:
-    return InstructionType::CALL;
-  case C_JR:
-    return InstructionType::RETURN;
-  case C_J:
-    return InstructionType::UNCONDITIONAL_BRANCH;
-  default:
-    if (toBinaryOperation(Op) != BinaryOps::BinaryOpsEnd) {
-      return InstructionType::BINOP;
-    }
-    if (toPredicate(Op) != Predicate::BAD_ICMP_PREDICATE) {
-      return InstructionType::CONDITIONAL_BRANCH;
-    }
-    return InstructionType::UNKNOWN;
-  }
+bool RISCV64MachineInstructionRaiserUtils::isAddI(unsigned int Op) {
+  return Op == ADDI || Op == ADDIW || Op == C_ADDI || Op == C_ADDIW ||
+         Op == C_ADDI4SPN || Op == C_ADDI16SP;
+}
+
+bool RISCV64MachineInstructionRaiserUtils::isLoad(unsigned int Op) {
+  return Op == LB || Op == LBU || Op == LH || Op == LHU || Op == LW ||
+         Op == LWU || Op == LD || Op == C_LW || Op == C_LD;
+}
+
+bool RISCV64MachineInstructionRaiserUtils::isStore(unsigned int Op) {
+  return Op == SB || Op == SH || Op == SW || Op == SD || Op == C_SW ||
+         Op == C_SD;
 }
 
 BinaryOps
@@ -219,11 +185,6 @@ Predicate RISCV64MachineInstructionRaiserUtils::toPredicate(unsigned int Op) {
   }
 }
 
-bool RISCV64MachineInstructionRaiserUtils::isAddI(unsigned int Op) {
-  return Op == ADDI || Op == ADDIW || Op == C_ADDI || Op == C_ADDIW ||
-         Op == C_ADDI4SPN || Op == C_ADDI16SP;
-}
-
 bool RISCV64MachineInstructionRaiserUtils::isPrologInstruction(
     const MachineInstr &MI) {
   auto IsDecreaseStackPointerInstruction = [](const MachineInstr &MI) {
@@ -233,12 +194,12 @@ bool RISCV64MachineInstructionRaiserUtils::isPrologInstruction(
            MI.getOperand(2).getImm() < 0;
   };
   auto IsStoreReturnAddress = [](const MachineInstr &MI) {
-    return getInstructionType(MI.getOpcode()) == InstructionType::STORE &&
-           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == X1;
+    return isStore(MI.getOpcode()) && MI.getOperand(0).isReg() &&
+           MI.getOperand(0).getReg() == X1;
   };
   auto IsStoreStackPointer = [](const MachineInstr &MI) {
-    return getInstructionType(MI.getOpcode()) == InstructionType::STORE &&
-           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == X8;
+    return isStore(MI.getOpcode()) && MI.getOperand(0).isReg() &&
+           MI.getOperand(0).getReg() == X8;
   };
   return IsDecreaseStackPointerInstruction(MI) || IsStoreReturnAddress(MI) ||
          IsStoreStackPointer(MI) || MI.getOpcode() == C_SDSP ||
@@ -254,12 +215,12 @@ bool RISCV64MachineInstructionRaiserUtils::isEpilogInstruction(
            MI.getOperand(2).getImm() > 0;
   };
   auto IsLoadReturnAddress = [](const MachineInstr &MI) {
-    return getInstructionType(MI.getOpcode()) == InstructionType::LOAD &&
-           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == X1;
+    return isLoad(MI.getOpcode()) && MI.getOperand(0).isReg() &&
+           MI.getOperand(0).getReg() == X1;
   };
   auto IsLoadStackPointer = [](const MachineInstr &MI) {
-    return getInstructionType(MI.getOpcode()) == InstructionType::LOAD &&
-           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == X8;
+    return isLoad(MI.getOpcode()) && MI.getOperand(0).isReg() &&
+           MI.getOperand(0).getReg() == X8;
   };
   return IsIncreaseStackPointerInstruction(MI) || IsLoadReturnAddress(MI) ||
          IsLoadStackPointer(MI) || MI.getOpcode() == C_LDSP ||

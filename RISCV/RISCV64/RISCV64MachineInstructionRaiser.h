@@ -43,31 +43,28 @@ public:
 
   /// Raises the machine function by traversing the machine basic blocks of the
   /// machine function in loop traversal order. A basic block will be created
-  /// for each machine basic block with incrementing names like "bb.{X}", where
-  /// X is the index of the machine basic block. The raised instructions will be
-  /// added to the created basic blocks.
+  /// for each machine basic block. The raised instructions of the machine
+  /// basic blocks will be added to the created basic blocks.
   bool raise() override;
 
-  /// Creates a FunctionType and subsequently a Function by discovering the
-  /// function signatures and stores the raised function (without instructions)
-  /// in a member variable and returns the function type of that function.
+  /// Creates a FunctionType and a Function by discovering the function
+  /// signatures. The raised function (without instructions) will be stored
+  /// in a member variable, and returns the function type of that function.
   FunctionType *getRaisedFunctionPrototype() override;
 
   /// Gets the corresponding argument number of the register. When the register
   /// is not an argument register (x10-x17 i.e. a0-a7), -1 is returned.
   int getArgumentNumber(unsigned int PReg) override;
 
-  /// Gets the value currently stored in the register by first retrieving the
-  /// value currently set in the register-value map. If this value is not set,
+  /// Gets the value for the specified register number by first retrieving the
+  /// value currently assigned to the register. If this value is not set,
   /// and the given register is an argument register, the corresponding argument
   /// will be retrieved from the raised function.
   Value *getRegOrArgValue(unsigned int PReg, int MBBNo) override;
 
   /// Gets the value corresponding to the machine operand. If the operand is a
-  /// register, the value currently set in the register-value map is retrieved.
-  /// If the operand is an immediate, a constant value is created corresponding
-  /// to the immediate. Assumes that the operand is either a register or an
-  /// immediate.
+  /// register, the value currently assigned to it is retrieved. Otherwise, a
+  /// constant value is created corresponding to the immediate.
   Value *getRegOrImmValue(const MachineOperand &MOp, int MBBNo);
 
   /// Gets the basic block created for the specified machine basic block.
@@ -97,78 +94,62 @@ private:
 
   /// Raises the non-terminator machine instruction by calling the appropriate
   /// raise function and adds it (if applicable) to the basic block.
-  bool raiseNonTerminatorInstruction(const MachineInstr &MI, int MBBNo);
+  bool raiseNonTerminator(const MachineInstr &MI, int MBBNo);
 
   /// Raises the terminator machine instruction by calling the appropriate
   /// raise function and adds it (if applicable) to the basic block.
-  bool raiseTerminatorInstruction(ControlTransferInfo *Info);
+  bool raiseTerminator(ControlTransferInfo *Info);
 
-  /// Raises the binary instruction by retrieving the values of the second
-  /// operand (a register value) and the third operand (either a register value
-  /// or a constant value) and creating a BinaryOperator instruction using
-  /// these two values. The resulting instruction will be asigned to the
-  /// register of the first operand in the register-value map.
+  /// Raises the binary operation by creating a BinaryOperator and assigning it
+  /// to the register of the first operand. Integer types are widened in case
+  /// of a mismatch. 
   bool raiseBinaryOperation(BinaryOps BinOp, const MachineInstr &MI, int MBBNo);
 
-  /// Determines whether the add instruction adds an offset to an address to
-  /// compute a new address, i.e. instructions such as `add a5, a5, a4`, where
-  /// a5 is a pointer type and a4 is not, or vice versa.
-  bool isAddressOffsetInstruction(BinaryOps BinOp, Type *LHSTy, Type *RHSTy);
-
   /// Raises the add instruction which represents adding an offset to
-  /// to an address by creating an in bounds GEP instruction.
+  /// to an address by creating an in bounds GEP instruction and assigning
+  /// it to the register of the first operand.
   bool raiseAddressOffsetInstruction(const MachineInstr &MI, Value *Ptr,
                                      Value *Val, int MBBNo);
 
-  /// Raises a MV or LI instruction by retrieving the register or immediate
-  /// value of the second operand and assigning it to the register of the first
-  /// operand in the register-value map.
-  bool raiseMoveInstruction(const MachineInstr &MI, int MBBNo);
+  /// Raises a MV or LI instruction by assigning the value to the register of
+  /// the first operand.
+  bool raiseMove(const MachineInstr &MI, int MBBNo);
 
-  /// Raises a load (LB, LH, LW, LD, ...) instruction by either retrieving the
-  /// pointer stored at the stack offset (when the second operand is the stack
-  /// pointer) or by retrieving the pointer stored in the register of the second
-  /// operand (when the second operand is not the stack pointer and the offset
-  /// is zero) and using that pointer to create a LoadInst. Other addressing
-  /// modes are not yet supported. The resulting LoadInst will be assigned to
-  /// the register of the first operand in the register-value map.
-  bool raiseLoadInstruction(const MachineInstr &MI, int MBBNo);
+  /// Raises a LB, LH, LW, or LD instruction by creating a LoadInst instruction 
+  /// using the value of the register of the second operand as the pointer and 
+  /// the immediate of the third operand as the offset. The create instruction
+  /// will be assigned to the register of the first operand.
+  bool raiseLoad(const MachineInstr &MI, int MBBNo);
 
-  /// Raises a store (SB, SH, SW, SD) instruction by retrieving the value of the
-  /// first operand, creating an AllocaInst and storing the retrieved value to
-  /// the created allocation by creating a StoreInst. The created allocation is
-  /// assigned to the stack offset in the stack-value map.
-  bool raiseStoreInstruction(const MachineInstr &MI, int MBBNo);
+  /// Raises a SB, SH, SW, or SD instruction by creating a StoreInst instruction
+  /// using the value of the register of the first operand as the value to 
+  /// store, the value of the register of the second operand as the pointer to
+  /// store to, and the immediate of the third operand as the offset.
+  bool raiseStore(const MachineInstr &MI, int MBBNo);
 
-  /// Raises an AUIPC instruction by looking at the ADDI instruction after the
-  /// AUIPC. Using the offset of the instruction, text address and immediate, it
-  /// is determined whether the global value is present in either the .rodata or
-  /// .data sections of the ELF. If this is the case, a global variable is
-  /// created and assigned to the register of the first operand in the
-  /// register-value map.
-  bool raiseGlobalInstruction(const MachineInstr &MI, int MBBNo);
+  /// Raises an AUIPC instruction by resolving the PC-relative address to a
+  /// GlobalVariable, creating it when it has not yet been created.
+  bool raisePCRelativeAccess(const MachineInstr &MI, int MBBNo);
 
   /// Raises a JAL instruction by retrieving the called function, constructing
   /// the arguments vector based on the values stored in the argument registers,
-  /// and creating a CallInst, which is stored in the return register (a0) in
-  /// the register-value map.
-  bool raiseCallInstruction(const MachineInstr &MI, int MBBNo);
+  /// and creating a CallInst, which is assigned to the return register.
+  bool raiseCall(const MachineInstr &MI, int MBBNo);
 
-  /// Raises a JR instruction by creating a ReturnInst using the value
-  /// stored in the return register in the register-value map.
-  bool raiseReturnInstruction(const MachineInstr &MI, int MBBNo);
+  /// Raises a JR instruction by creating a ReturnInst using the value assigned
+  /// to the return register.
+  bool raiseReturn(const MachineInstr &MI, int MBBNo);
 
-  /// Raises a J instruction, by determining the basic block using the offset
+  /// Raises a J instruction by determining the basic block using the offset
   /// of the immediate operand and creating an unconditional branch instruction
   /// using the basic block as its target.
-  bool raiseUnconditonalBranchInstruction(ControlTransferInfo *Info);
+  bool raiseUnconditonalBranch(ControlTransferInfo *Info);
 
   /// Raises a branch instruction (BGE, BLT, BEQ, etc.), by creating a compare
   /// instruction using the LHS (register) and RHS (register or 0) of the
   /// machine instruction. The result is used to created a conditional branch
   /// instruction using the target basic block and successor basic block.
-  bool raiseConditionalBranchInstruction(Predicate Pred,
-                                         ControlTransferInfo *Info);
+  bool raiseConditionalBranch(Predicate Pred, ControlTransferInfo *Info);
 
   /// Gets the function being called by the instruction by first checking if the
   /// function is known in the module raiser. If not, the .plt section is used

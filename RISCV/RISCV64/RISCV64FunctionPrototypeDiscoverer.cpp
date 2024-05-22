@@ -54,8 +54,8 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
     // Check if the basic block calls another function. If so, only search for
     // the a0 register after that instruction, because the a0 register might be
     // defined as a function parameter.
-    auto End = findInstructionByOpcode(JAL, MBB.instr_rbegin(),
-                                       MBB.instr_rend());
+    auto End =
+        findInstructionByOpcode(JAL, MBB.instr_rbegin(), MBB.instr_rend());
 
     // Check if basic block defines the a0 register as a return value, searching
     // only after the last call instruction (or from the beginning of the basic
@@ -75,7 +75,8 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
     for (auto It = Begin; It != End; ++It) {
       if (It->definesRegister(MOp2.getReg())) {
         // Defining instruction loads a pointer
-        if (It->getOpcode() == LD || It->getOpcode() == C_LD) {
+        if (isLoad(It->getOpcode()) &&
+            getAlign(It->getOpcode()) == DoubleWordAlign) {
           return Type::getInt64Ty(C);
         }
 
@@ -84,7 +85,8 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
         const MachineInstr *Next = It->getNextNode();
         if (Prev != nullptr && Prev->getOpcode() == AUIPC &&
             isAddI(It->getOpcode()) && Next != nullptr &&
-            getInstructionType(Next->getOpcode()) != InstructionType::LOAD) {
+            !(isLoad(It->getOpcode()) &&
+              getAlign(It->getOpcode()) == DoubleWordAlign)) {
           return Type::getInt64Ty(C);
         }
 
