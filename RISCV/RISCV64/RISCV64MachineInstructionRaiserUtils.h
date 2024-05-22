@@ -1,4 +1,4 @@
-//===-- RISCV64MachineInstructionUtils.h ------------------------*- C++ -*-===//
+//===-- RISCV64MachineInstructionRaiserUtils.h ------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,8 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the declaration of multiple utility functions regarding
-// machine instructions and machine basic blocks for use by llvm-mctoll.
+// This file contains the declarations of multiple utility functions use for
+// discovering the function prototypes and raising the machine functions for
+// use by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,7 +34,7 @@ using Predicate = llvm::CmpInst::Predicate;
 
 /// Contains utility functions regarding machine instructions and finding
 /// machine instructions within basic blocks.
-namespace RISCV64MachineInstructionUtils {
+namespace RISCV64MachineInstructionRaiserUtils {
 
 const uint64_t DoubleWordAlign = 8;
 const uint64_t SingleWordAlign = 4;
@@ -118,7 +119,7 @@ findInstructionByRegNo(unsigned int RegNo,
                        MachineBasicBlock::const_reverse_instr_iterator Begin,
                        MachineBasicBlock::const_reverse_instr_iterator End);
 
-} // namespace RISCV64MachineInstructionUtils
+} // namespace RISCV64MachineInstructionRaiserUtils
 } // namespace mctoll
 } // namespace llvm
 

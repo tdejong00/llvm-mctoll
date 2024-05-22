@@ -26,8 +26,8 @@
 #include <string>
 
 using namespace llvm;
-using namespace llvm::mctoll;
-using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
+using namespace mctoll;
+using namespace RISCV64MachineInstructionRaiserUtils;
 
 RISCV64ValueTracker::RISCV64ValueTracker(RISCV64MachineInstructionRaiser *MIR)
     : MIR(MIR), MF(MIR->getMF()), C(MIR->getMF().getFunction().getContext()) {}

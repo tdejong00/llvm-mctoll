@@ -17,10 +17,10 @@ add_llvm_component_library(mctollRISCVRaiser
   RISCV32/RISCV32ModuleRaiser.cpp
   RISCV32/RISCV32MachineInstructionRaiser.cpp
   
-  RISCV64/RISCV64MachineInstructionRaiser.cpp
   RISCV64/RISCV64ModuleRaiser.cpp
+  RISCV64/RISCV64MachineInstructionRaiser.cpp
+  RISCV64/RISCV64MachineInstructionRaiserUtils.cpp
   RISCV64/RISCV64FunctionPrototypeDiscoverer.cpp
-  RISCV64/RISCV64MachineInstructionUtils.cpp
   RISCV64/RISCV64ValueTracker.cpp
 
   DEPENDS

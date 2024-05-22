@@ -15,7 +15,6 @@
 #include "IncludedFileInfo.h"
 #include "MCTargetDesc/RISCVMCTargetDesc.h"
 #include "ModuleRaiser.h"
-#include "RISCV64/RISCV64MachineInstructionUtils.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/ELF.h"
@@ -33,7 +32,6 @@
 
 using namespace llvm;
 using namespace mctoll;
-using namespace RISCV64MachineInstructionUtils;
 
 SectionRef RISCVELFUtils::getSectionAtOffset(uint64_t Offset,
                                              StringRef Name) const {
@@ -192,7 +190,7 @@ GlobalVariable *RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
     GlobalVar->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
   }
 
-  Index = ConstantInt::get(getDefaultIntType(C), Offset - Section.getAddress());
+  Index = ConstantInt::get(Type::getInt32Ty(C), Offset - Section.getAddress());
 
   return GlobalVar;
 }
@@ -249,7 +247,7 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
     break;
   default:
     // More than 4 bytes -> must be array or struct
-    IntegerType *ElementType = getDefaultIntType(C);
+    IntegerType *ElementType = Type::getInt32Ty(C);
     Align = ElementType->getBitWidth() / 8;
     uint64_t NumElements = Symbol.getSize() / Align;
     Ty = ArrayType::get(ElementType, NumElements);
@@ -308,12 +306,8 @@ GlobalVariable *RISCVELFUtils::getDynRelocValueAtOffset(uint64_t Offset) const {
     return nullptr;
   }
 
-  dbgs() << "found dyn reloc at offset " << DynReloc->getOffset() << "\n";
-
   StringRef SymbolName = unwrapOrError(DynReloc->getSymbol()->getName(),
                                        ELFObjectFile->getFileName());
-
-  dbgs() << "with name " << SymbolName << "\n";
 
   // Check if global variable already created
   GlobalVariable *GlobalVar = MR->getModule()->getNamedGlobal(SymbolName);
@@ -326,8 +320,6 @@ GlobalVariable *RISCVELFUtils::getDynRelocValueAtOffset(uint64_t Offset) const {
       ELFObjectFile->getSymbol(DynReloc->getSymbol()->getRawDataRefImpl()),
       ELFObjectFile->getFileName());
   uint64_t SymbolSize = Symbol->st_size;
-
-  dbgs() << "with size " << SymbolSize << "\n";
 
   // Get section contents
   SectionRef Section = getSectionAtOffset(Offset);
@@ -371,20 +363,17 @@ GlobalVariable *RISCVELFUtils::getDynRelocValueAtOffset(uint64_t Offset) const {
     Align = 1;
     break;
   case 0:
-    Ty = getDefaultPtrType(C);
+    Ty = Type::getInt64PtrTy(C);
     Linkage = GlobalValue::ExternalLinkage;
     Align = 8;
     break;
   default:
     // More than 4 bytes -> must be array or struct
-    IntegerType *ElementType = getDefaultIntType(C);
+    IntegerType *ElementType = Type::getInt32Ty(C);
     Align = ElementType->getBitWidth() / 8;
     uint64_t NumElements = SymbolSize / Align;
     Ty = ArrayType::get(ElementType, NumElements);
   }
-
-  dbgs() << "with type ";
-  Ty->dump();
 
   // Create global variable
   GlobalVar = new GlobalVariable(*MR->getModule(), Ty, false, Linkage, nullptr,

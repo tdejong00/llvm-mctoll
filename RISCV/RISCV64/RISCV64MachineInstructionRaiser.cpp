@@ -18,7 +18,7 @@
 #include "MachineInstructionRaiser.h"
 #include "ModuleRaiser.h"
 #include "RISCV64FunctionPrototypeDiscoverer.h"
-#include "RISCV64MachineInstructionUtils.h"
+#include "RISCV64MachineInstructionRaiserUtils.h"
 #include "RISCV64ValueTracker.h"
 #include "RISCVELFUtils.h"
 #include "RISCVModuleRaiser.h"
@@ -76,8 +76,9 @@
 #define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
-using namespace llvm::mctoll;
-using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
+using namespace mctoll;
+using namespace RISCV;
+using namespace RISCV64MachineInstructionRaiserUtils;
 
 #define ENABLE_RAISING_DEBUG_INFO
 
@@ -143,7 +144,7 @@ bool RISCV64MachineInstructionRaiser::raise() {
     }
 
     // Initialize hardwired zero register
-    ValueTracker.setRegValue(MBB->getNumber(), RISCV::X0, Zero);
+    ValueTracker.setRegValue(MBB->getNumber(), X0, Zero);
 
     // Create basic block
     BasicBlock *BB = BasicBlock::Create(C, "", RaisedFunction);
@@ -154,7 +155,7 @@ bool RISCV64MachineInstructionRaiser::raise() {
     // Loop over machine instructions of basic block and raise each instruction.
     for (const MachineInstr &MI : MBB->instrs()) {
       bool WasAUIPC = MI.getPrevNode() != nullptr &&
-                      MI.getPrevNode()->getOpcode() == RISCV::AUIPC;
+                      MI.getPrevNode()->getOpcode() == AUIPC;
 
       // Skip raising of prolog and epilog instructions,
       // as these do not contain any needed information
@@ -261,7 +262,7 @@ FunctionType *RISCV64MachineInstructionRaiser::getRaisedFunctionPrototype() {
 }
 
 int RISCV64MachineInstructionRaiser::getArgumentNumber(unsigned int PReg) {
-  unsigned int ArgReg = PReg - RISCV::X10;
+  unsigned int ArgReg = PReg - X10;
   if (ArgReg < 8) {
     return ArgReg;
   }
@@ -443,7 +444,7 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
   assert(MOp1.isReg() && MOp2.isReg() && (MOp3.isReg() || MOp3.isImm()));
 
   // Instructions like `addi s0,$` should load value at stack offset
-  if (BinOp == BinaryOps::Add && MOp2.getReg() == RISCV::X8 && MOp3.isImm()) {
+  if (BinOp == BinaryOps::Add && MOp2.getReg() == X8 && MOp3.isImm()) {
     Value *StackValue = ValueTracker.getStackSlot(MOp3.getImm());
     ValueTracker.setRegValue(MBBNo, MOp1.getReg(), StackValue);
     return true;
@@ -566,7 +567,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   Value *Ptr = nullptr;
 
   // Load from stack
-  if (MOp2.getReg() == RISCV::X8) {
+  if (MOp2.getReg() == X8) {
     int64_t StackOffset = MOp3.getImm();
     Ptr = ValueTracker.getStackSlot(StackOffset);
   }
@@ -612,7 +613,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoadInstruction(
   Type *Ty = getDefaultType(C, MI);
 
   // When loading from stack, use the allocated type
-  if (MOp2.getReg() == RISCV::X8) {
+  if (MOp2.getReg() == X8) {
     AllocaInst *Alloca = dyn_cast<AllocaInst>(Ptr);
     Ty = Alloca->getAllocatedType();
   }
@@ -652,7 +653,7 @@ bool RISCV64MachineInstructionRaiser::raiseStoreInstruction(
 
   Value *Ptr = nullptr;
   // Store to stack
-  if (MOp2.getReg() == RISCV::X8) {
+  if (MOp2.getReg() == X8) {
     Ptr = ValueTracker.getStackSlot(MOp3.getImm(), Val->getType());
   }
   // Store to address specified in register
@@ -718,7 +719,7 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
 
   const MachineInstr *NextMI = MI.getNextNode();
 
-  if (NextMI->getOpcode() != RISCV::ADDI && NextMI->getOpcode() != RISCV::LD) {
+  if (NextMI->getOpcode() != ADDI && NextMI->getOpcode() != LD) {
     printFailure(MI, "Expected instruction after AUIPC to be ADDI or LD");
     return false;
   }
@@ -738,7 +739,7 @@ bool RISCV64MachineInstructionRaiser::raiseGlobalInstruction(
   int64_t ValueOffset = NextMOp3.getImm();
 
   uint64_t Offset = InstOffset + TextOffset + ValueOffset;
-  if (NextMI->getOpcode() == RISCV::LD) {
+  if (NextMI->getOpcode() == LD) {
     Offset += PCOffset;
   }
 
@@ -794,7 +795,7 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
   std::vector<Value *> Args;
   if (CalledFunctionType->isVarArg() ||
       CalledFunctionType->getNumParams() > 0) {
-    for (unsigned int ArgReg = RISCV::X10; ArgReg < RISCV::X17; ArgReg++) {
+    for (unsigned int ArgReg = X10; ArgReg < X17; ArgReg++) {
       // Do not add too many arguments, values might
       // still be present from  previous function calls.
       if (Args.size() == CalledFunctionType->getNumParams() &&
@@ -832,7 +833,7 @@ bool RISCV64MachineInstructionRaiser::raiseCallInstruction(
   }
 
   CallInst *Call = Builder.CreateCall(CalledFunction, Args);
-  ValueTracker.setRegValue(MBBNo, RISCV::X10, Call);
+  ValueTracker.setRegValue(MBBNo, X10, Call);
 
   return true;
 }
@@ -847,7 +848,7 @@ bool RISCV64MachineInstructionRaiser::raiseReturnInstruction(
   if (RetTy->isVoidTy()) {
     Builder.CreateRetVoid();
   } else {
-    Value *RetVal = getRegOrArgValue(RISCV::X10, MBBNo);
+    Value *RetVal = getRegOrArgValue(X10, MBBNo);
 
     if (RetVal == nullptr) {
       printFailure(MI, "Register value of return instruction not set");
@@ -904,7 +905,7 @@ bool RISCV64MachineInstructionRaiser::raiseConditionalBranchInstruction(
   // operand. All other branch instructions have two register operands and
   // a single immediate operand.
   bool IsImplicitZero =
-      MI.getOpcode() == RISCV::C_BNEZ || MI.getOpcode() == RISCV::C_BEQZ;
+      MI.getOpcode() == C_BNEZ || MI.getOpcode() == C_BEQZ;
 
   Value *RHS = nullptr;
   uint64_t Offset;

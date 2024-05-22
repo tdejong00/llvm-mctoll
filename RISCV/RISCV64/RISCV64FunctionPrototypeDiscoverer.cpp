@@ -13,7 +13,7 @@
 
 #include "RISCV64FunctionPrototypeDiscoverer.h"
 #include "MCTargetDesc/RISCVMCTargetDesc.h"
-#include "RISCV64MachineInstructionUtils.h"
+#include "RISCV64MachineInstructionRaiserUtils.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
@@ -22,8 +22,9 @@
 #include <cassert>
 
 using namespace llvm;
-using namespace llvm::mctoll;
-using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
+using namespace mctoll;
+using namespace RISCV;
+using namespace RISCV64MachineInstructionRaiserUtils;
 
 Function *
 RISCV64FunctionPrototypeDiscoverer::discoverFunctionPrototype() const {
@@ -53,13 +54,13 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
     // Check if the basic block calls another function. If so, only search for
     // the a0 register after that instruction, because the a0 register might be
     // defined as a function parameter.
-    auto End = findInstructionByOpcode(RISCV::JAL, MBB.instr_rbegin(),
+    auto End = findInstructionByOpcode(JAL, MBB.instr_rbegin(),
                                        MBB.instr_rend());
 
     // Check if basic block defines the a0 register as a return value, searching
     // only after the last call instruction (or from the beginning of the basic
     // block if no call instruction is present).
-    auto Begin = findInstructionByRegNo(RISCV::X10, MBB.instr_rbegin(), End);
+    auto Begin = findInstructionByRegNo(X10, MBB.instr_rbegin(), End);
 
     // Return value not defined
     if (Begin == End) {
@@ -67,21 +68,21 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
     }
 
     const MachineOperand &MOp2 = Begin->getOperand(1);
-    assert(Begin->getOpcode() == RISCV::C_MV && MOp2.isReg());
+    assert(Begin->getOpcode() == C_MV && MOp2.isReg());
 
     // Determine if pointer type based on the instruction which defines
     // the register whose contents are moved to the return register.
     for (auto It = Begin; It != End; ++It) {
       if (It->definesRegister(MOp2.getReg())) {
         // Defining instruction loads a pointer
-        if (It->getOpcode() == RISCV::LD || It->getOpcode() == RISCV::C_LD) {
+        if (It->getOpcode() == LD || It->getOpcode() == C_LD) {
           return Type::getInt64Ty(C);
         }
 
         // Defining instruction loads a global variable pointer
         const MachineInstr *Prev = It->getPrevNode();
         const MachineInstr *Next = It->getNextNode();
-        if (Prev != nullptr && Prev->getOpcode() == RISCV::AUIPC &&
+        if (Prev != nullptr && Prev->getOpcode() == AUIPC &&
             isAddI(It->getOpcode()) && Next != nullptr &&
             getInstructionType(Next->getOpcode()) != InstructionType::LOAD) {
           return Type::getInt64Ty(C);
@@ -113,7 +114,7 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
     // registers whose values are not yet defined.
     for (auto It = MBB.instr_begin(); It != MBB.instr_end(); ++It) {
       // Argument register is moved to a local register and not yet defined
-      if (It->getOpcode() == RISCV::C_MV) {
+      if (It->getOpcode() == C_MV) {
         const MachineOperand &MOp2 = It->getOperand(1);
         assert(MOp2.isReg());
         if (isArgReg(MOp2.getReg()) &&
@@ -122,7 +123,7 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
         }
       }
       // Argument register is stored to a stack slot and not yet defined
-      else if (It->getOpcode() == RISCV::SD) {
+      else if (It->getOpcode() == SD) {
         const MachineOperand &MOp1 = It->getOperand(0);
         assert(MOp1.isReg());
         if (isArgReg(MOp1.getReg()) &&

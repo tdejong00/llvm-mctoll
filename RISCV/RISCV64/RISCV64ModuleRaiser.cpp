@@ -15,7 +15,7 @@
 #include "llvm/Object/ELFObjectFile.h"
 
 using namespace llvm;
-using namespace llvm::mctoll;
+using namespace mctoll;
 
 bool RISCV64ModuleRaiser::collectDynamicRelocations() {
   if (!Obj->isELF())

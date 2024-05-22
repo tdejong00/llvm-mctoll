@@ -1,4 +1,4 @@
-//===-- RISCV64MachineInstructionUtils.cpp ----------------------*- C++ -*-===//
+//===-- RISCV64MachineInstructionRaiserUtils.cpp ----------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,12 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the definition of multiple utility functions regarding
-// machine instructions and machine basic blocks for use by llvm-mctoll.
+// This file contains the definitions of multiple utility functions use for
+// discovering the function prototypes and raising the machine functions for
+// use by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
 
-#include "RISCV64MachineInstructionUtils.h"
+#include "RISCV64MachineInstructionRaiserUtils.h"
 #include "MCTargetDesc/RISCVMCTargetDesc.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstr.h"
@@ -28,18 +29,21 @@
 #define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
-using namespace llvm::mctoll;
-using namespace llvm::mctoll::RISCV64MachineInstructionUtils;
+using namespace mctoll;
+using namespace RISCV;
+using namespace RISCV64MachineInstructionRaiserUtils;
 
-std::string RISCV64MachineInstructionUtils::getRegName(unsigned int RegNo) {
-  return "x" + std::to_string(RegNo - RISCV::X0);
+std::string
+RISCV64MachineInstructionRaiserUtils::getRegName(unsigned int RegNo) {
+  return "x" + std::to_string(RegNo - X0);
 }
 
-bool RISCV64MachineInstructionUtils::isArgReg(unsigned int RegNo) {
-  return RegNo >= RISCV::X10 && RegNo <= RISCV::X17;
+bool RISCV64MachineInstructionRaiserUtils::isArgReg(unsigned int RegNo) {
+  return RegNo >= X10 && RegNo <= X17;
 }
 
-Type *RISCV64MachineInstructionUtils::getDefaultType(LLVMContext &C,
+Type *
+RISCV64MachineInstructionRaiserUtils::getDefaultType(LLVMContext &C,
                                                      const MachineInstr &MI) {
   if (getAlign(MI.getOpcode()) == DoubleWordAlign) {
     return Type::getInt64Ty(C);
@@ -47,29 +51,31 @@ Type *RISCV64MachineInstructionUtils::getDefaultType(LLVMContext &C,
   return getDefaultIntType(C);
 }
 
-IntegerType *RISCV64MachineInstructionUtils::getDefaultIntType(LLVMContext &C) {
+IntegerType *
+RISCV64MachineInstructionRaiserUtils::getDefaultIntType(LLVMContext &C) {
   return Type::getInt32Ty(C);
 }
 
-PointerType *RISCV64MachineInstructionUtils::getDefaultPtrType(LLVMContext &C) {
+PointerType *
+RISCV64MachineInstructionRaiserUtils::getDefaultPtrType(LLVMContext &C) {
   return Type::getInt64PtrTy(C);
 }
 
-uint64_t RISCV64MachineInstructionUtils::getAlign(unsigned int Op) {
+uint64_t RISCV64MachineInstructionRaiserUtils::getAlign(unsigned int Op) {
   switch (Op) {
-  case RISCV::SD:
-  case RISCV::C_SD:
-  case RISCV::LD:
-  case RISCV::C_LD:
+  case SD:
+  case C_SD:
+  case LD:
+  case C_LD:
     return DoubleWordAlign;
   default:
     return SingleWordAlign;
   }
 }
 
-ConstantInt *RISCV64MachineInstructionUtils::toGEPIndex(LLVMContext &C,
-                                                        uint64_t Offset,
-                                                        uint64_t Align) {
+ConstantInt *RISCV64MachineInstructionRaiserUtils::toGEPIndex(LLVMContext &C,
+                                                              uint64_t Offset,
+                                                              uint64_t Align) {
   // Make sure offset is a multiple of Width
   if (Offset & (Align - 1)) {
     dbgs() << "offset " << Offset << " is not aligned to " << Align
@@ -82,37 +88,37 @@ ConstantInt *RISCV64MachineInstructionUtils::toGEPIndex(LLVMContext &C,
 }
 
 InstructionType
-RISCV64MachineInstructionUtils::getInstructionType(unsigned int Op) {
+RISCV64MachineInstructionRaiserUtils::getInstructionType(unsigned int Op) {
   switch (Op) {
-  case RISCV::C_NOP:
+  case C_NOP:
     return InstructionType::NOP;
-  case RISCV::C_LI:
-  case RISCV::C_MV:
+  case C_LI:
+  case C_MV:
     return InstructionType::MOVE;
-  case RISCV::LB:
-  case RISCV::LBU:
-  case RISCV::LH:
-  case RISCV::LHU:
-  case RISCV::LW:
-  case RISCV::LWU:
-  case RISCV::LD:
-  case RISCV::C_LW:
-  case RISCV::C_LD:
+  case LB:
+  case LBU:
+  case LH:
+  case LHU:
+  case LW:
+  case LWU:
+  case LD:
+  case C_LW:
+  case C_LD:
     return InstructionType::LOAD;
-  case RISCV::SB:
-  case RISCV::SH:
-  case RISCV::SW:
-  case RISCV::SD:
-  case RISCV::C_SW:
-  case RISCV::C_SD:
+  case SB:
+  case SH:
+  case SW:
+  case SD:
+  case C_SW:
+  case C_SD:
     return InstructionType::STORE;
-  case RISCV::AUIPC:
+  case AUIPC:
     return InstructionType::GLOBAL;
-  case RISCV::JAL:
+  case JAL:
     return InstructionType::CALL;
-  case RISCV::C_JR:
+  case C_JR:
     return InstructionType::RETURN;
-  case RISCV::C_J:
+  case C_J:
     return InstructionType::UNCONDITIONAL_BRANCH;
   default:
     if (toBinaryOperation(Op) != BinaryOps::BinaryOpsEnd) {
@@ -125,142 +131,142 @@ RISCV64MachineInstructionUtils::getInstructionType(unsigned int Op) {
   }
 }
 
-BinaryOps RISCV64MachineInstructionUtils::toBinaryOperation(unsigned int Op) {
+BinaryOps
+RISCV64MachineInstructionRaiserUtils::toBinaryOperation(unsigned int Op) {
   switch (Op) {
-  case RISCV::ADD:
-  case RISCV::ADDW:
-  case RISCV::C_ADD:
-  case RISCV::C_ADDW:
-  case RISCV::ADDI:
-  case RISCV::ADDIW:
-  case RISCV::C_ADDI:
-  case RISCV::C_ADDIW:
-  case RISCV::C_ADDI4SPN:
-  case RISCV::C_ADDI16SP:
+  case ADD:
+  case ADDW:
+  case C_ADD:
+  case C_ADDW:
+  case ADDI:
+  case ADDIW:
+  case C_ADDI:
+  case C_ADDIW:
+  case C_ADDI4SPN:
+  case C_ADDI16SP:
     return BinaryOps::Add;
-  case RISCV::SUB:
-  case RISCV::SUBW:
-  case RISCV::C_SUB:
-  case RISCV::C_SUBW:
+  case SUB:
+  case SUBW:
+  case C_SUB:
+  case C_SUBW:
     return BinaryOps::Sub;
-  case RISCV::MUL:
-  case RISCV::MULH:
-  case RISCV::MULHU:
-  case RISCV::MULHSU:
-  case RISCV::MULW:
+  case MUL:
+  case MULH:
+  case MULHU:
+  case MULHSU:
+  case MULW:
     return BinaryOps::Mul;
-  case RISCV::DIV:
-  case RISCV::DIVW:
+  case DIV:
+  case DIVW:
     return BinaryOps::SDiv;
-  case RISCV::DIVU:
-  case RISCV::DIVUW:
+  case DIVU:
+  case DIVUW:
     return BinaryOps::UDiv;
-  case RISCV::SLL:
-  case RISCV::SLLW:
-  case RISCV::SLLI:
-  case RISCV::SLLIW:
-  case RISCV::C_SLLI:
+  case SLL:
+  case SLLW:
+  case SLLI:
+  case SLLIW:
+  case C_SLLI:
     return BinaryOps::Shl;
-  case RISCV::SRL:
-  case RISCV::SRLW:
-  case RISCV::SRLI:
-  case RISCV::SRLIW:
-  case RISCV::C_SRLI:
+  case SRL:
+  case SRLW:
+  case SRLI:
+  case SRLIW:
+  case C_SRLI:
     return BinaryOps::LShr;
-  case RISCV::SRA:
-  case RISCV::SRAW:
-  case RISCV::SRAI:
-  case RISCV::SRAIW:
-  case RISCV::C_SRAI:
+  case SRA:
+  case SRAW:
+  case SRAI:
+  case SRAIW:
+  case C_SRAI:
     return BinaryOps::AShr;
-  case RISCV::AND:
-  case RISCV::ANDI:
-  case RISCV::C_AND:
-  case RISCV::C_ANDI:
+  case AND:
+  case ANDI:
+  case C_AND:
+  case C_ANDI:
     return BinaryOps::And;
-  case RISCV::OR:
-  case RISCV::ORI:
-  case RISCV::C_OR:
+  case OR:
+  case ORI:
+  case C_OR:
     return BinaryOps::Or;
-  case RISCV::XOR:
-  case RISCV::XORI:
-  case RISCV::C_XOR:
+  case XOR:
+  case XORI:
+  case C_XOR:
     return BinaryOps::Xor;
   default:
     return BinaryOps::BinaryOpsEnd;
   }
 }
 
-Predicate RISCV64MachineInstructionUtils::toPredicate(unsigned int Op) {
+Predicate RISCV64MachineInstructionRaiserUtils::toPredicate(unsigned int Op) {
   switch (Op) {
-  case RISCV::BEQ:
-  case RISCV::C_BEQZ:
+  case BEQ:
+  case C_BEQZ:
     return Predicate::ICMP_EQ;
-  case RISCV::BNE:
-  case RISCV::C_BNEZ:
+  case BNE:
+  case C_BNEZ:
     return Predicate::ICMP_NE;
-  case RISCV::BGE:
+  case BGE:
     return Predicate::ICMP_SGE;
-  case RISCV::BGEU:
+  case BGEU:
     return Predicate::ICMP_UGE;
-  case RISCV::BLT:
+  case BLT:
     return Predicate::ICMP_SLT;
-  case RISCV::BLTU:
+  case BLTU:
     return Predicate::ICMP_ULT;
   default:
     return Predicate::BAD_ICMP_PREDICATE;
   }
 }
 
-bool RISCV64MachineInstructionUtils::isAddI(unsigned int Op) {
-  return Op == RISCV::ADDI || Op == RISCV::ADDIW || Op == RISCV::C_ADDI ||
-         Op == RISCV::C_ADDIW || Op == RISCV::C_ADDI4SPN ||
-         Op == RISCV::C_ADDI16SP;
+bool RISCV64MachineInstructionRaiserUtils::isAddI(unsigned int Op) {
+  return Op == ADDI || Op == ADDIW || Op == C_ADDI || Op == C_ADDIW ||
+         Op == C_ADDI4SPN || Op == C_ADDI16SP;
 }
 
-bool RISCV64MachineInstructionUtils::isPrologInstruction(
+bool RISCV64MachineInstructionRaiserUtils::isPrologInstruction(
     const MachineInstr &MI) {
   auto IsDecreaseStackPointerInstruction = [](const MachineInstr &MI) {
     return isAddI(MI.getOpcode()) && MI.getOperand(0).isReg() &&
-           MI.getOperand(0).getReg() == RISCV::X2 && MI.getOperand(1).isReg() &&
-           MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm() &&
+           MI.getOperand(0).getReg() == X2 && MI.getOperand(1).isReg() &&
+           MI.getOperand(1).getReg() == X2 && MI.getOperand(2).isImm() &&
            MI.getOperand(2).getImm() < 0;
   };
   auto IsStoreReturnAddress = [](const MachineInstr &MI) {
     return getInstructionType(MI.getOpcode()) == InstructionType::STORE &&
-           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == RISCV::X1;
+           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == X1;
   };
   auto IsStoreStackPointer = [](const MachineInstr &MI) {
     return getInstructionType(MI.getOpcode()) == InstructionType::STORE &&
-           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == RISCV::X8;
+           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == X8;
   };
   return IsDecreaseStackPointerInstruction(MI) || IsStoreReturnAddress(MI) ||
-         IsStoreStackPointer(MI) || MI.getOpcode() == RISCV::C_SDSP ||
-         MI.getOpcode() == RISCV::C_ADDI4SPN;
+         IsStoreStackPointer(MI) || MI.getOpcode() == C_SDSP ||
+         MI.getOpcode() == C_ADDI4SPN;
 }
 
-bool RISCV64MachineInstructionUtils::isEpilogInstruction(
+bool RISCV64MachineInstructionRaiserUtils::isEpilogInstruction(
     const MachineInstr &MI) {
   auto IsIncreaseStackPointerInstruction = [](const MachineInstr &MI) {
     return isAddI(MI.getOpcode()) && MI.getOperand(0).isReg() &&
-           MI.getOperand(0).getReg() == RISCV::X2 && MI.getOperand(1).isReg() &&
-           MI.getOperand(1).getReg() == RISCV::X2 && MI.getOperand(2).isImm() &&
+           MI.getOperand(0).getReg() == X2 && MI.getOperand(1).isReg() &&
+           MI.getOperand(1).getReg() == X2 && MI.getOperand(2).isImm() &&
            MI.getOperand(2).getImm() > 0;
   };
   auto IsLoadReturnAddress = [](const MachineInstr &MI) {
     return getInstructionType(MI.getOpcode()) == InstructionType::LOAD &&
-           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == RISCV::X1;
+           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == X1;
   };
   auto IsLoadStackPointer = [](const MachineInstr &MI) {
     return getInstructionType(MI.getOpcode()) == InstructionType::LOAD &&
-           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == RISCV::X8;
+           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == X8;
   };
   return IsIncreaseStackPointerInstruction(MI) || IsLoadReturnAddress(MI) ||
-         IsLoadStackPointer(MI) || MI.getOpcode() == RISCV::C_LDSP ||
-         MI.getOpcode() == RISCV::C_ADDI16SP;
+         IsLoadStackPointer(MI) || MI.getOpcode() == C_LDSP ||
+         MI.getOpcode() == C_ADDI16SP;
 }
 
-bool RISCV64MachineInstructionUtils::isRegisterDefined(
+bool RISCV64MachineInstructionRaiserUtils::isRegisterDefined(
     unsigned int RegNo, MachineBasicBlock::const_instr_iterator Begin,
     MachineBasicBlock::const_instr_iterator End) {
   auto Pred = [&RegNo](const MachineInstr &MI) {
@@ -270,7 +276,7 @@ bool RISCV64MachineInstructionUtils::isRegisterDefined(
 }
 
 MachineBasicBlock::const_reverse_instr_iterator
-RISCV64MachineInstructionUtils::findInstructionByOpcode(
+RISCV64MachineInstructionRaiserUtils::findInstructionByOpcode(
     unsigned int Op, MachineBasicBlock::const_reverse_instr_iterator Begin,
     MachineBasicBlock::const_reverse_instr_iterator End) {
   auto Pred = [&Op](const MachineInstr &MI) { return MI.getOpcode() == Op; };
@@ -278,7 +284,7 @@ RISCV64MachineInstructionUtils::findInstructionByOpcode(
 }
 
 MachineBasicBlock::const_reverse_instr_iterator
-RISCV64MachineInstructionUtils::findInstructionByRegNo(
+RISCV64MachineInstructionRaiserUtils::findInstructionByRegNo(
     unsigned int RegNo, MachineBasicBlock::const_reverse_instr_iterator Begin,
     MachineBasicBlock::const_reverse_instr_iterator End) {
   auto Pred = [&RegNo](const MachineInstr &MI) {

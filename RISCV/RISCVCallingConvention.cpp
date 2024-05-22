@@ -3,7 +3,7 @@
 #include "MCTargetDesc/RISCVMCTargetDesc.h"
 
 using namespace llvm;
-using namespace llvm::RISCV;
+using namespace RISCV;
 
 void RISCVCallingConvention::addIntRegs8() {
   addIntArgRegister(X10);
