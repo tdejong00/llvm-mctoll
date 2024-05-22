@@ -105,12 +105,6 @@ private:
   /// of a mismatch. 
   bool raiseBinaryOperation(BinaryOps BinOp, const MachineInstr &MI, int MBBNo);
 
-  /// Raises the add instruction which represents adding an offset to
-  /// to an address by creating an in bounds GEP instruction and assigning
-  /// it to the register of the first operand.
-  bool raiseAddressOffsetInstruction(const MachineInstr &MI, Value *Ptr,
-                                     Value *Val, int MBBNo);
-
   /// Raises a MV or LI instruction by assigning the value to the register of
   /// the first operand.
   bool raiseMove(const MachineInstr &MI, int MBBNo);

@@ -75,7 +75,8 @@ uint64_t RISCV64MachineInstructionRaiserUtils::getAlign(unsigned int Op) {
 ConstantInt *RISCV64MachineInstructionRaiserUtils::toGEPIndex(LLVMContext &C,
                                                               uint64_t Offset,
                                                               uint64_t Align) {
-  assert(!(Offset & (Align - 1)) && "GEP index offset is not correctly aligned");
+  assert(!(Offset & (Align - 1)) &&
+         "GEP index offset is not correctly aligned");
 
   uint64_t V = Offset / Align;
 
@@ -89,12 +90,12 @@ bool RISCV64MachineInstructionRaiserUtils::isAddI(unsigned int Op) {
 
 bool RISCV64MachineInstructionRaiserUtils::isLoad(unsigned int Op) {
   return Op == LB || Op == LBU || Op == LH || Op == LHU || Op == LW ||
-         Op == LWU || Op == LD || Op == C_LW || Op == C_LD;
+         Op == LWU || Op == LD || Op == C_LW || Op == C_LD || Op == C_LDSP;
 }
 
 bool RISCV64MachineInstructionRaiserUtils::isStore(unsigned int Op) {
   return Op == SB || Op == SH || Op == SW || Op == SD || Op == C_SW ||
-         Op == C_SD;
+         Op == C_SD || Op == C_SDSP;
 }
 
 BinaryOps
@@ -201,9 +202,12 @@ bool RISCV64MachineInstructionRaiserUtils::isPrologInstruction(
     return isStore(MI.getOpcode()) && MI.getOperand(0).isReg() &&
            MI.getOperand(0).getReg() == X8;
   };
-  return IsDecreaseStackPointerInstruction(MI) || IsStoreReturnAddress(MI) ||
-         IsStoreStackPointer(MI) || MI.getOpcode() == C_SDSP ||
-         MI.getOpcode() == C_ADDI4SPN;
+  auto IsSetFramePointer = [](const MachineInstr &MI) {
+    return toBinaryOperation(MI.getOpcode()) != BinaryOps::BinaryOpsEnd &&
+           MI.getOperand(0).getReg() == X8 && MI.getOperand(1).getReg() == X2;
+  };
+  return IsStoreReturnAddress(MI) || IsStoreStackPointer(MI) ||
+         IsSetFramePointer(MI);
 }
 
 bool RISCV64MachineInstructionRaiserUtils::isEpilogInstruction(

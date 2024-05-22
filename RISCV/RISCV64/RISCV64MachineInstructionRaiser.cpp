@@ -153,6 +153,18 @@ bool RISCV64MachineInstructionRaiser::raise() {
 
     // Loop over machine instructions of basic block and raise each instruction.
     for (const MachineInstr &MI : MBB->instrs()) {
+      // Skip prolog instructions
+      if (isPrologInstruction(MI)) {
+        printSkipped(MI, "Skipped raising of prolog instruction");
+        continue;
+      }
+
+      // Skip epilog instructions
+      if (isEpilogInstruction(MI)) {
+        printSkipped(MI, "Skipped raising of epilog instruction");
+        continue;
+      }
+
       // The instruction after an AUIPC is already handled
       //  during raising of the AUIPC instruction.
       if (MI.getPrevNode() != nullptr &&
@@ -451,15 +463,12 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
     return false;
   }
 
-  Type *LTy = LHS->getType();
-  Type *RTy = RHS->getType();
-
-  // Instructions where the lhs is a pointer and the rhs is not (or vice
-  // versa) calculate an address. This will be raised using a GEP instruction.
-  if (BinOp == BinaryOps::Add && LTy->isPointerTy() != RTy->isPointerTy()) {
-    Value *Ptr = LTy->isPointerTy() ? LHS : RHS;
-    Value *Val = LTy->isPointerTy() ? RHS : LHS;
-    return raiseAddressOffsetInstruction(MI, Ptr, Val, MBBNo);
+  // Convert pointers to i64 for binary operation
+  if (LHS->getType()->isPointerTy()) {
+    LHS = Builder.CreatePtrToInt(LHS, Type::getInt64Ty(C));
+  }
+  if (RHS->getType()->isPointerTy()) {
+    RHS = Builder.CreatePtrToInt(RHS, Type::getInt64Ty(C));
   }
 
   // Type mismatch
@@ -473,52 +482,6 @@ bool RISCV64MachineInstructionRaiser::raiseBinaryOperation(
   // Create binary operation instruction and assign to destination register
   Value *Val = Builder.CreateBinOp(BinOp, LHS, RHS);
   ValueTracker.setRegValue(MBBNo, MOp1.getReg(), Val);
-
-  return true;
-}
-
-bool RISCV64MachineInstructionRaiser::raiseAddressOffsetInstruction(
-    const MachineInstr &MI, Value *Ptr, Value *Val, int MBBNo) {
-  BasicBlock *BB = getBasicBlock(MBBNo);
-  IRBuilder<> Builder(BB);
-
-  assert(Ptr->getType()->isPointerTy() && "expected a pointer type");
-  assert(!Val->getType()->isPointerTy() && "expected an integral type");
-
-  const MachineOperand &MOp1 = MI.getOperand(0);
-
-  assert(MOp1.isReg());
-
-  // Remove unnecessary Shl instructions for array accesses, because the
-  // operands of the GEP instructions represent indices and not number of
-  // bytes.
-  if (BinaryOperator *BinOp = dyn_cast<BinaryOperator>(Val)) {
-    Value *LHS = BinOp->getOperand(0);
-    Value *RHS = BinOp->getOperand(1);
-    if (BinOp->getOpcode() == BinaryOps::Shl && isa<ConstantInt>(RHS)) {
-      Val = LHS;
-      BinOp->eraseFromParent();
-    }
-  }
-
-  // Create GEP instruction
-  Value *GEP = nullptr;
-  if (GEPOperator *GEPOp = dyn_cast<GEPOperator>(Ptr)) {
-    Type *Ty = GEPOp->getResultElementType();
-    GEP = Builder.CreateInBoundsGEP(Ty, GEPOp, Val);
-  } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(Ptr)) {
-    Type *Ty = getDefaultType(C, *MI.getNextNode());
-    GEP = Builder.CreateInBoundsGEP(Ty, GlobalVar, Val);
-  } else if (LoadInst *Load = dyn_cast<LoadInst>(Ptr)) {
-    Type *Ty = getDefaultType(C, *MI.getNextNode());
-    GEP = Builder.CreateInBoundsGEP(Ty, Load, Val);
-  } else {
-    printFailure(MI, "unexpected pointer type");
-    return false;
-  }
-
-  // Assign created GEP to destination register
-  ValueTracker.setRegValue(MBBNo, MOp1.getReg(), GEP);
 
   return true;
 }
@@ -694,9 +657,13 @@ bool RISCV64MachineInstructionRaiser::raiseStore(const MachineInstr &MI,
     return false;
   }
 
-  // Store instructions require an actual pointer, cast i64 to ptr
+  // Store instructions require an actual pointer, cast i64 to ptr and offset
+  // the address using a GEP instruction.
   if (Ptr->getType() == Type::getInt64Ty(C)) {
-    Ptr = Builder.CreateIntToPtr(Ptr, getDefaultPtrType(C));
+    Type *Ty = getDefaultType(C, MI);
+    ConstantInt *Index = toGEPIndex(C, MOp3.getImm(), getAlign(MI.getOpcode()));
+    Value *IntToPtr = Builder.CreateIntToPtr(Ptr, getDefaultPtrType(C));
+    Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
   }
 
   // Create store instruction
