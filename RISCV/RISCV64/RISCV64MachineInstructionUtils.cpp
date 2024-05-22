@@ -41,8 +41,7 @@ bool RISCV64MachineInstructionUtils::isArgReg(unsigned int RegNo) {
 
 Type *RISCV64MachineInstructionUtils::getDefaultType(LLVMContext &C,
                                                      const MachineInstr &MI) {
-  if (MI.getOpcode() == RISCV::LD || MI.getOpcode() == RISCV::C_LD ||
-      MI.getOpcode() == RISCV::SD || MI.getOpcode() == RISCV::C_SD) {
+  if (getAlign(MI.getOpcode()) == DoubleWordAlign) {
     return Type::getInt64Ty(C);
   }
   return getDefaultIntType(C);
@@ -56,19 +55,28 @@ PointerType *RISCV64MachineInstructionUtils::getDefaultPtrType(LLVMContext &C) {
   return Type::getInt64PtrTy(C);
 }
 
+uint64_t RISCV64MachineInstructionUtils::getAlign(unsigned int Op) {
+  switch (Op) {
+  case RISCV::SD:
+  case RISCV::C_SD:
+  case RISCV::LD:
+  case RISCV::C_LD:
+    return DoubleWordAlign;
+  default:
+    return SingleWordAlign;
+  }
+}
+
 ConstantInt *RISCV64MachineInstructionUtils::toGEPIndex(LLVMContext &C,
                                                         uint64_t Offset,
-                                                        IntegerType *Ty) {
-  unsigned int Width = Ty->getBitWidth() / 8;
-
+                                                        uint64_t Align) {
   // Make sure offset is a multiple of Width
-  if (Offset & (Width - 1)) {
-    errs() << "offset " << Offset << " is not aligned to " << Width
+  if (Offset & (Align - 1)) {
+    dbgs() << "offset " << Offset << " is not aligned to " << Align
            << " bytes\n";
-    exit(EXIT_FAILURE);
   }
 
-  uint64_t V = Offset / Width;
+  uint64_t V = Offset / Align;
 
   return ConstantInt::get(getDefaultIntType(C), V);
 }

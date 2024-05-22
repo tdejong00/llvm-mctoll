@@ -35,6 +35,9 @@ using Predicate = llvm::CmpInst::Predicate;
 /// machine instructions within basic blocks.
 namespace RISCV64MachineInstructionUtils {
 
+const uint64_t DoubleWordAlign = 8;
+const uint64_t SingleWordAlign = 4;
+
 /// Represents different instruction types.
 enum class InstructionType {
   NOP,
@@ -66,11 +69,15 @@ std::string getRegName(unsigned int RegNo);
 /// Determines whether the register is a argument register, i.e. x10-x17.
 bool isArgReg(unsigned int RegNo);
 
+/// Determines the alignment of the instruction represented by the specified
+/// opcode, being either aligned to a single word or to a double word.
+uint64_t getAlign(unsigned int Op);
+
 /// Creates a ConstantInt representing a GEP index, based on the given pointer
 /// offset (number of bytes). The operands of the GEP instructions represent
-/// indices and not number of bytes. The specified type is used for determining
-/// the integer bit width.
-ConstantInt *toGEPIndex(LLVMContext &C, uint64_t Offset, IntegerType *Ty);
+/// indices and not number of bytes. The specified alignment is used for
+/// converting the number of bytes to an index.
+ConstantInt *toGEPIndex(LLVMContext &C, uint64_t Offset, uint64_t Align);
 
 /// Determines the instruction type of the opcode.
 InstructionType getInstructionType(unsigned int Op);
