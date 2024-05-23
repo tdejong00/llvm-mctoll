@@ -748,6 +748,13 @@ bool RISCV64MachineInstructionRaiser::raiseCall(const MachineInstr &MI,
         break;
       }
 
+      // For vararg function calls, only add arguments that are defined locally
+      if (CalledFunctionType->isVarArg() &&
+          !isRegisterDefined(ArgReg, MI.getParent()->instr_begin(),
+                             MI.getIterator())) {
+        break;
+      }
+
       Value *RegVal = getRegOrArgValue(ArgReg, MBBNo);
       if (RegVal == nullptr) {
         break;

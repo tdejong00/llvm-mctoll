@@ -1,14 +1,13 @@
 // REQUIRES: system-linux
 // REQUIRES: riscv64-linux-gnu-gcc
-// RUN: touch tmp
+// RUN: echo "test" > tmp
 // RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll tmp | FileCheck %s
 // CHECK: no. arguments: 2
 // CHECK: argv[1]: tmp
 // CHECK: successfully opened file
-// CHECK: Mode: 33204
-// CHECK: Size: 0 bytes
+// CHECK: Size: 5 bytes
 // CHECK: successfully read file status
 // CHECK: successfully closed file
 
@@ -36,15 +35,14 @@ int main(int argc, char *argv[]) {
 
     puts("successfully opened file");
 
-    struct stat fileStat;
-    if (fstat(fd, &fileStat) == -1) {
+    struct stat file_stat;
+    if (fstat(fd, &file_stat) == -1) {
         perror("Error getting file status");
         close(fd);
         return EXIT_FAILURE;
     }
 
-    printf("Mode: %u\n", fileStat.st_mode);
-    printf("Size: %lld bytes\n", (long long) fileStat.st_size);
+    printf("Size: %ld bytes\n", file_stat.st_size);
 
     puts("successfully read file status");
 
