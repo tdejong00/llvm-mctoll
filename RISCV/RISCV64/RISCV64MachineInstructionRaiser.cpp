@@ -401,10 +401,15 @@ bool RISCV64MachineInstructionRaiser::raiseNonTerminator(const MachineInstr &MI,
   case C_SD:
     return raiseStore(MI, MBBNo);
   case AUIPC:
+  case LUI:
+  case C_LUI:
     return raisePCRelativeAccess(MI, MBBNo);
   case JAL:
+  case C_JAL:
     return raiseCall(MI, MBBNo);
   case C_JR:
+  case JALR:
+  case C_JALR:
     return raiseReturn(MI, MBBNo);
   default:
     printFailure(MI, "Unimplemented or unknown non-terminator instruction");
@@ -677,22 +682,44 @@ bool RISCV64MachineInstructionRaiser::raisePCRelativeAccess(
   BasicBlock *BB = getBasicBlock(MBBNo);
   IRBuilder<> Builder(BB);
 
-  const MachineInstr *NextMI = MI.getNextNode();
-
-  assert(NextMI->getOpcode() == ADDI || NextMI->getOpcode() == LD);
-
+  const MachineOperand &MOp1 = MI.getOperand(0);
   const MachineOperand &MOp2 = MI.getOperand(1);
+
+  assert(MOp1.getReg() && MOp2.isImm());
+
+  // Find corresponding ADDI or LD instruction
+  auto Pred = [&MOp1](const MachineInstr &MI) {
+    return (MI.getOpcode() == ADDI || MI.getOpcode() == LD) &&
+           MI.getNumOperands() >= 2 && MI.getOperand(1).isReg() &&
+           MI.getOperand(1).getReg() == MOp1.getReg();
+  };
+  auto NextMI = std::find_if(MI.getNextNode()->getIterator(),
+                         MI.getParent()->instr_end(), Pred);
+  if (NextMI == MI.getParent()->instr_end()) {
+    printFailure(MI, "no corresponding ADDI or LD found for AUIPC or LUI");
+    return false;
+  }
+
   const MachineOperand &NextMOp1 = NextMI->getOperand(0);
   const MachineOperand &NextMOp3 = NextMI->getOperand(2);
 
-  assert(MOp2.isImm() && NextMOp1.isReg() && NextMOp3.isImm());
+  assert(NextMOp1.isReg() && NextMOp3.isImm());
 
   // Compute the PC-relative offset
   uint64_t PCOffset = MOp2.getImm() << 12;
   uint64_t InstOffset = MCIR->getMCInstIndex(MI);
   uint64_t TextOffset = MR->getTextSectionAddress();
   int64_t ValueOffset = NextMOp3.getImm();
-  uint64_t Offset = InstOffset + TextOffset + PCOffset + ValueOffset;
+
+  uint64_t Offset = 0;
+  // PC-relative offset
+  if (MI.getOpcode() == AUIPC) {
+    Offset = InstOffset + TextOffset + PCOffset + ValueOffset;
+  }
+  // Absolute offset
+  else if (MI.getOpcode() == LUI) {
+    Offset = PCOffset + ValueOffset;
+  }
 
   // Try to resolve the offset to a dynamic relocation
   GlobalVariable *GlobalVar = ELFUtils.getDynRelocValueAtOffset(Offset);

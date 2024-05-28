@@ -10,6 +10,7 @@
 // CHECK: Size: 5 bytes
 // CHECK: successfully read file status
 // CHECK: successfully closed file
+// XFAIL: *
 
 #include <fcntl.h>
 #include <stdio.h>

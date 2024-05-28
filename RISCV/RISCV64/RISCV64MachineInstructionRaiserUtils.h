@@ -36,23 +36,8 @@ using Predicate = llvm::CmpInst::Predicate;
 /// machine instructions within basic blocks.
 namespace RISCV64MachineInstructionRaiserUtils {
 
-const uint64_t DoubleWordAlign = 8;
 const uint64_t SingleWordAlign = 4;
-
-/// Represents different instruction types.
-// enum class InstructionType {
-//   NOP,
-//   BINOP,
-//   MOVE,
-//   LOAD,
-//   STORE,
-//   GLOBAL,
-//   CALL,
-//   RETURN,
-//   UNCONDITIONAL_BRANCH,
-//   CONDITIONAL_BRANCH,
-//   UNKNOWN
-// };
+const uint64_t DoubleWordAlign = 8;
 
 /// Gets the default type for machine instruction using the given LLVM context,
 /// based on if the given machine instruction loads or stores a pointer.
@@ -79,9 +64,6 @@ uint64_t getAlign(unsigned int Op);
 /// indices and not number of bytes. The specified alignment is used for
 /// converting the number of bytes to an index.
 ConstantInt *toGEPIndex(LLVMContext &C, uint64_t Offset, uint64_t Align);
-
-/// Determines the instruction type of the opcode.
-// InstructionType getInstructionType(unsigned int Op);
 
 /// Determines whether the opcode represents an add immediate instruction.
 bool isAddI(unsigned int Op);

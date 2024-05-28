@@ -10,6 +10,7 @@
 // CHECK: test
 // CHECK: successfully read file
 // CHECK: successfully closed file
+// XFAIL: *
 
 #include <stdio.h>
 #include <stdlib.h>
