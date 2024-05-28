@@ -206,8 +206,8 @@ bool RISCV64MachineInstructionRaiserUtils::isPrologInstruction(
     return toBinaryOperation(MI.getOpcode()) != BinaryOps::BinaryOpsEnd &&
            MI.getOperand(0).getReg() == X8 && MI.getOperand(1).getReg() == X2;
   };
-  return IsStoreReturnAddress(MI) || IsStoreStackPointer(MI) ||
-         IsSetFramePointer(MI);
+  return IsDecreaseStackPointerInstruction(MI) || IsStoreReturnAddress(MI) ||
+         IsStoreStackPointer(MI) || IsSetFramePointer(MI);
 }
 
 bool RISCV64MachineInstructionRaiserUtils::isEpilogInstruction(
