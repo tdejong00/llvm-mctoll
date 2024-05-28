@@ -19,6 +19,7 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Instruction.h"
 #include <cassert>
 
 using namespace llvm;
@@ -67,8 +68,12 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
       continue;
     }
 
+    if (Begin->getOpcode() == C_LI) {
+      return getDefaultIntType(C);
+    }
+
     const MachineOperand &MOp2 = Begin->getOperand(1);
-    assert(Begin->getOpcode() == C_MV && MOp2.isReg());
+    assert(MOp2.isReg());
 
     // Determine if pointer type based on the instruction which defines
     // the register whose contents are moved to the return register.
@@ -116,7 +121,7 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
     // registers whose values are not yet defined.
     for (auto It = MBB.instr_begin(); It != MBB.instr_end(); ++It) {
       // Argument register is moved to a local register and not yet defined
-      if (It->getOpcode() == C_MV) {
+      if (It->getOpcode() == C_MV || toBinaryOperation(It->getOpcode()) != BinaryOps::BinaryOpsEnd) {
         const MachineOperand &MOp2 = It->getOperand(1);
         assert(MOp2.isReg());
         if (isArgReg(MOp2.getReg()) &&
