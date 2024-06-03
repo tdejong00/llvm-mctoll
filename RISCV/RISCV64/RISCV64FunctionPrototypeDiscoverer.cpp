@@ -21,6 +21,7 @@
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Instruction.h"
 #include <cassert>
+#include <cstdint>
 
 using namespace llvm;
 using namespace mctoll;
@@ -68,8 +69,9 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
       continue;
     }
 
+    // Move immediate always means 32-bit return type
     if (Begin->getOpcode() == C_LI) {
-      return getDefaultIntType(C);
+      return Type::getInt32Ty(C);
     }
 
     const MachineOperand &MOp2 = Begin->getOperand(1);
@@ -100,8 +102,8 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
       }
     }
 
-    // Assume integer return type by default
-    return getDefaultIntType(C);
+    // Assume 32-bit integer return type by default
+    return Type::getInt32Ty(C);
   }
 
   return Ty;
@@ -120,23 +122,26 @@ RISCV64FunctionPrototypeDiscoverer::discoverArgumentTypes() const {
     // Loop over instructions and check for use of argument
     // registers whose values are not yet defined.
     for (auto It = MBB.instr_begin(); It != MBB.instr_end(); ++It) {
-      // Argument register is moved to a local register and not yet defined
-      if (It->getOpcode() == C_MV || toBinaryOperation(It->getOpcode()) != BinaryOps::BinaryOpsEnd) {
-        const MachineOperand &MOp2 = It->getOperand(1);
-        assert(MOp2.isReg());
-        if (isArgReg(MOp2.getReg()) &&
-            !isRegisterDefined(MOp2.getReg(), MBB.instr_begin(), It)) {
-          ArgumentTypes.push_back(getDefaultIntType(C));
-        }
+      unsigned int Op = It->getOpcode();
+
+      // Only consider moves, stores, and binary operations
+      if (Op != C_MV && !isStore(Op) &&
+          toBinaryOperation(Op) == Instruction::BinaryOpsEnd) {
+        continue;
       }
-      // Argument register is stored to a stack slot and not yet defined
-      else if (It->getOpcode() == SD) {
-        const MachineOperand &MOp1 = It->getOperand(0);
-        assert(MOp1.isReg());
-        if (isArgReg(MOp1.getReg()) &&
-            !isRegisterDefined(MOp1.getReg(), MBB.instr_begin(), It)) {
-          ArgumentTypes.push_back(Type::getInt64Ty(C));
-        }
+
+      const MachineOperand &MOp =
+          isStore(It->getOpcode()) ? It->getOperand(0) : It->getOperand(1);
+      assert(MOp.isReg());
+
+      // Register is argument register and is not defined -> argument
+      if (isArgReg(MOp.getReg()) &&
+          !isRegisterDefined(MOp.getReg(), MBB.instr_begin(), It)) {
+        // Determine type based on
+        uint64_t Align = getAlign(It->getOpcode());
+        Type *Ty = Align == DoubleWordAlign ? Type::getInt64Ty(C)
+                                            : Type::getInt32Ty(C);
+        ArgumentTypes.push_back(Ty);
       }
     }
   }
