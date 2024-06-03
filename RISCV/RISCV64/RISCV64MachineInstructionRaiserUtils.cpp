@@ -24,6 +24,8 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
 #include <algorithm>
+#include <cassert>
+#include <cstdint>
 
 #define DEBUG_TYPE "mctoll"
 
@@ -41,25 +43,6 @@ bool RISCV64MachineInstructionRaiserUtils::isArgReg(unsigned int RegNo) {
   return RegNo >= X10 && RegNo <= X17;
 }
 
-Type *
-RISCV64MachineInstructionRaiserUtils::getDefaultType(LLVMContext &C,
-                                                     const MachineInstr &MI) {
-  if (getAlign(MI.getOpcode()) == DoubleWordAlign) {
-    return Type::getInt64Ty(C);
-  }
-  return getDefaultIntType(C);
-}
-
-IntegerType *
-RISCV64MachineInstructionRaiserUtils::getDefaultIntType(LLVMContext &C) {
-  return Type::getInt32Ty(C);
-}
-
-PointerType *
-RISCV64MachineInstructionRaiserUtils::getDefaultPtrType(LLVMContext &C) {
-  return Type::getInt64PtrTy(C);
-}
-
 uint64_t RISCV64MachineInstructionRaiserUtils::getAlign(unsigned int Op) {
   switch (Op) {
   case SD:
@@ -72,6 +55,18 @@ uint64_t RISCV64MachineInstructionRaiserUtils::getAlign(unsigned int Op) {
   }
 }
 
+Type *RISCV64MachineInstructionRaiserUtils::getType(LLVMContext &C,
+                                                    unsigned int Op) {
+  switch (getAlign(Op)) {
+  case SingleWordAlign:
+    return Type::getInt32Ty(C);
+  case DoubleWordAlign:
+    return Type::getInt64Ty(C);
+  default:
+    assert(false && "unknown alignment");
+  }
+}
+
 ConstantInt *RISCV64MachineInstructionRaiserUtils::toGEPIndex(LLVMContext &C,
                                                               uint64_t Offset,
                                                               uint64_t Align) {
@@ -80,7 +75,7 @@ ConstantInt *RISCV64MachineInstructionRaiserUtils::toGEPIndex(LLVMContext &C,
 
   uint64_t V = Offset / Align;
 
-  return ConstantInt::get(getDefaultIntType(C), V);
+  return ConstantInt::get(Type::getInt32Ty(C), V);
 }
 
 bool RISCV64MachineInstructionRaiserUtils::isAddI(unsigned int Op) {

@@ -41,13 +41,13 @@ const uint64_t DoubleWordAlign = 8;
 
 /// Gets the default type for machine instruction using the given LLVM context,
 /// based on if the given machine instruction loads or stores a pointer.
-Type *getDefaultType(LLVMContext &C, const MachineInstr &MI);
+// Type *getDefaultType(LLVMContext &C, const MachineInstr &MI);
 
 /// Gets the default integer type using the given LLVM context.
-IntegerType *getDefaultIntType(LLVMContext &C);
+// IntegerType *getDefaultIntType(LLVMContext &C);
 
 /// Gets the default pointer type using the given LLVM context.
-PointerType *getDefaultPtrType(LLVMContext &C);
+// PointerType *getDefaultPtrType(LLVMContext &C);
 
 /// Gets the string representation of the register.
 std::string getRegName(unsigned int RegNo);
@@ -58,6 +58,10 @@ bool isArgReg(unsigned int RegNo);
 /// Determines the alignment of the instruction represented by the specified
 /// opcode, being either aligned to a single word or to a double word.
 uint64_t getAlign(unsigned int Op);
+
+/// Determines the type for the instruction represented by the opcode, using
+/// the given LLVM context for creating the types.
+Type *getType(LLVMContext &C, unsigned int Op);
 
 /// Creates a ConstantInt representing a GEP index, based on the given pointer
 /// offset (number of bytes). The operands of the GEP instructions represent

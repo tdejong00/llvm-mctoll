@@ -289,7 +289,7 @@ RISCV64MachineInstructionRaiser::getRegOrImmValue(const MachineOperand &MOp,
     return getRegOrArgValue(MOp.getReg(), MBBNo);
   }
 
-  return ConstantInt::get(getDefaultIntType(C), MOp.getImm());
+  return ConstantInt::get(Type::getInt32Ty(C), MOp.getImm());
 }
 
 BasicBlock *RISCV64MachineInstructionRaiser::getBasicBlock(int MBBNo) {
@@ -555,10 +555,10 @@ bool RISCV64MachineInstructionRaiser::raiseLoad(const MachineInstr &MI,
           toGEPIndex(C, MOp3.getImm(), getAlign(MI.getOpcode()));
       Ptr = Builder.CreateInBoundsGEP(Ty, ArrayPtr, {Zero, Index});
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
-      Type *Ty = getDefaultType(C, MI);
+      Type *Ty = getType(C, MI.getOpcode());
       ConstantInt *Index =
           toGEPIndex(C, MOp3.getImm(), getAlign(MI.getOpcode()));
-      Value *IntToPtr = Builder.CreateIntToPtr(Load, getDefaultPtrType(C));
+      Value *IntToPtr = Builder.CreateIntToPtr(Load, Type::getInt64PtrTy(C));
       Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
     } else {
       Ptr = ArrayPtr;
@@ -570,7 +570,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoad(const MachineInstr &MI,
     return false;
   }
 
-  Type *Ty = getDefaultType(C, MI);
+  Type *Ty = getType(C, MI.getOpcode());
 
   // When loading from stack, use the allocated type
   if (MOp2.getReg() == X8) {
@@ -581,9 +581,8 @@ bool RISCV64MachineInstructionRaiser::raiseLoad(const MachineInstr &MI,
   // Load instructions require an actual pointer, cast i64
   // to ptr and offset the address using a GEP instruction.
   if (Ptr->getType() == Type::getInt64Ty(C)) {
-    Type *Ty = getDefaultType(C, MI);
     ConstantInt *Index = toGEPIndex(C, MOp3.getImm(), getAlign(MI.getOpcode()));
-    Value *IntToPtr = Builder.CreateIntToPtr(Ptr, getDefaultPtrType(C));
+    Value *IntToPtr = Builder.CreateIntToPtr(Ptr, Type::getInt64PtrTy(C));
     Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
   }
 
@@ -645,12 +644,12 @@ bool RISCV64MachineInstructionRaiser::raiseStore(const MachineInstr &MI,
       // If next instruction is load, determine type from that load instruction
       const MachineInstr *NextMI = MI.getNextNode();
       if (NextMI != nullptr && isLoad(NextMI->getOpcode())) {
-        Ty = getDefaultType(C, *NextMI);
+        Ty = getType(C, NextMI->getOpcode());
       }
 
       ConstantInt *Index =
           toGEPIndex(C, MOp3.getImm(), getAlign(MI.getOpcode()));
-      Value *IntToPtr = Builder.CreateIntToPtr(Load, getDefaultPtrType(C));
+      Value *IntToPtr = Builder.CreateIntToPtr(Load, Type::getInt64PtrTy(C));
       Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
     } else {
       Ptr = ArrayPtr;
@@ -665,9 +664,9 @@ bool RISCV64MachineInstructionRaiser::raiseStore(const MachineInstr &MI,
   // Store instructions require an actual pointer, cast i64 to ptr and offset
   // the address using a GEP instruction.
   if (Ptr->getType() == Type::getInt64Ty(C)) {
-    Type *Ty = getDefaultType(C, MI);
+    Type *Ty = getType(C, MI.getOpcode());
     ConstantInt *Index = toGEPIndex(C, MOp3.getImm(), getAlign(MI.getOpcode()));
-    Value *IntToPtr = Builder.CreateIntToPtr(Ptr, getDefaultPtrType(C));
+    Value *IntToPtr = Builder.CreateIntToPtr(Ptr, Type::getInt64PtrTy(C));
     Ptr = Builder.CreateInBoundsGEP(Ty, IntToPtr, Index);
   }
 
