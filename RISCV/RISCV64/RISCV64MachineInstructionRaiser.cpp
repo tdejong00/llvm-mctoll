@@ -753,6 +753,14 @@ bool RISCV64MachineInstructionRaiser::raiseCall(const MachineInstr &MI,
   BasicBlock *BB = getBasicBlock(MBBNo);
   IRBuilder<> Builder(BB);
 
+  const MachineOperand &MOp1 = MI.getOperand(0);
+  assert(MOp1.isReg());
+
+  if (MOp1.getReg() == X0) {
+    printFailure(MI, "zero link register not yet supported");
+    return false;
+  }
+
   // Get function at the specified offset
   Function *CalledFunction = getCalledFunction(MI);
   if (CalledFunction == nullptr) {
