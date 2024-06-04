@@ -124,6 +124,12 @@ RISCV64MachineInstructionRaiserUtils::toBinaryOperation(unsigned int Op) {
   case DIVU:
   case DIVUW:
     return BinaryOps::UDiv;
+  case REM:
+  case REMW:
+    return BinaryOps::SRem;
+  case REMU:
+  case REMUW:
+    return BinaryOps::URem;
   case SLL:
   case SLLW:
   case SLLI:
