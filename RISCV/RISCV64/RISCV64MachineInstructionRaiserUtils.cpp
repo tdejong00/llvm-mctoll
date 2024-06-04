@@ -45,10 +45,27 @@ bool RISCV64MachineInstructionRaiserUtils::isArgReg(unsigned int RegNo) {
 
 uint64_t RISCV64MachineInstructionRaiserUtils::getAlign(unsigned int Op) {
   switch (Op) {
+  case LB:
+  case LBU:
+  case SB:
+    return ByteAlign;
+  case LH:
+  case LHU:
+  case SH:
+    return HalfWordAlign;
+  case SW:
+  case C_SW:
+  case LW:
+  case C_LW:
+  case C_LWSP:
+  case C_SWSP:
+    return SingleWordAlign;
   case SD:
   case C_SD:
   case LD:
   case C_LD:
+  case C_LDSP:
+  case C_SDSP:
     return DoubleWordAlign;
   default:
     return SingleWordAlign;
@@ -58,6 +75,10 @@ uint64_t RISCV64MachineInstructionRaiserUtils::getAlign(unsigned int Op) {
 Type *RISCV64MachineInstructionRaiserUtils::getType(LLVMContext &C,
                                                     unsigned int Op) {
   switch (getAlign(Op)) {
+  case ByteAlign:
+    return Type::getInt8Ty(C);
+  case HalfWordAlign:
+    return Type::getInt16Ty(C);
   case SingleWordAlign:
     return Type::getInt32Ty(C);
   case DoubleWordAlign:
@@ -85,12 +106,13 @@ bool RISCV64MachineInstructionRaiserUtils::isAddI(unsigned int Op) {
 
 bool RISCV64MachineInstructionRaiserUtils::isLoad(unsigned int Op) {
   return Op == LB || Op == LBU || Op == LH || Op == LHU || Op == LW ||
-         Op == LWU || Op == LD || Op == C_LW || Op == C_LD || Op == C_LDSP;
+         Op == LWU || Op == C_LWSP || Op == LD || Op == C_LW || Op == C_LD ||
+         Op == C_LDSP;
 }
 
 bool RISCV64MachineInstructionRaiserUtils::isStore(unsigned int Op) {
   return Op == SB || Op == SH || Op == SW || Op == SD || Op == C_SW ||
-         Op == C_SD || Op == C_SDSP;
+         Op == C_SWSP || Op == C_SD || Op == C_SDSP;
 }
 
 BinaryOps

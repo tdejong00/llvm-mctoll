@@ -36,6 +36,8 @@ using Predicate = llvm::CmpInst::Predicate;
 /// machine instructions within basic blocks.
 namespace RISCV64MachineInstructionRaiserUtils {
 
+const uint64_t ByteAlign = 1;
+const uint64_t HalfWordAlign = 2;
 const uint64_t SingleWordAlign = 4;
 const uint64_t DoubleWordAlign = 8;
 

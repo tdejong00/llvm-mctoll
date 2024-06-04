@@ -552,7 +552,7 @@ bool RISCV64MachineInstructionRaiser::raiseLoad(const MachineInstr &MI,
     } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr)) {
       Type *Ty = GlobalVar->getValueType();
       ConstantInt *Index =
-          toGEPIndex(C, MOp3.getImm(), getAlign(MI.getOpcode()));
+          toGEPIndex(C, MOp3.getImm(), GlobalVar->getAlign()->value());
       Ptr = Builder.CreateInBoundsGEP(Ty, ArrayPtr, {Zero, Index});
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
       Type *Ty = getType(C, MI.getOpcode());
@@ -637,7 +637,7 @@ bool RISCV64MachineInstructionRaiser::raiseStore(const MachineInstr &MI,
     } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr)) {
       Type *Ty = GlobalVar->getValueType();
       ConstantInt *Index =
-          toGEPIndex(C, MOp3.getImm(), getAlign(MI.getOpcode()));
+          toGEPIndex(C, MOp3.getImm(), GlobalVar->getAlign()->value());
       Ptr = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
       Type *Ty = Load->getPointerOperandType();
