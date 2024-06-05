@@ -121,9 +121,11 @@ private:
   /// store to, and the immediate of the third operand as the offset.
   bool raiseStore(const MachineInstr &MI, int MBBNo);
 
-  /// Raises an AUIPC instruction by resolving the PC-relative address to a
-  /// GlobalVariable, creating it when it has not yet been created.
-  bool raisePCRelativeAccess(const MachineInstr &MI, int MBBNo);
+  /// Raises an AUIPC or LUI instruction by resolving the PC-relative or
+  /// absoluteaddress to a global variable, creating it when it has not yet
+  /// been created. The global variable is assigned to the first register of
+  /// the accompanying instruction.
+  bool raisePCRelativeOrAbsoluteAccess(const MachineInstr &MI, int MBBNo);
 
   /// Raises a JAL instruction by retrieving the called function, constructing
   /// the arguments vector based on the values stored in the argument registers,

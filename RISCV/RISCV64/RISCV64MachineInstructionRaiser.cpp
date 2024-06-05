@@ -167,8 +167,10 @@ bool RISCV64MachineInstructionRaiser::raise() {
 
       // The instruction after an AUIPC is already handled
       //  during raising of the AUIPC instruction.
-      if (MI.getPrevNode() != nullptr &&
-          MI.getPrevNode()->getOpcode() == AUIPC) {
+      const MachineInstr *PrevMI = MI.getPrevNode();
+      if (PrevMI != nullptr &&
+          (PrevMI->getOpcode() == AUIPC || PrevMI->getOpcode() == LUI ||
+           PrevMI->getOpcode() == C_LUI)) {
         printSkipped(MI, "Already raised by previous instruction");
         continue;
       }
@@ -403,7 +405,7 @@ bool RISCV64MachineInstructionRaiser::raiseNonTerminator(const MachineInstr &MI,
   case AUIPC:
   case LUI:
   case C_LUI:
-    return raisePCRelativeAccess(MI, MBBNo);
+    return raisePCRelativeOrAbsoluteAccess(MI, MBBNo);
   case JAL:
   case C_JAL:
     return raiseCall(MI, MBBNo);
@@ -676,7 +678,7 @@ bool RISCV64MachineInstructionRaiser::raiseStore(const MachineInstr &MI,
   return true;
 }
 
-bool RISCV64MachineInstructionRaiser::raisePCRelativeAccess(
+bool RISCV64MachineInstructionRaiser::raisePCRelativeOrAbsoluteAccess(
     const MachineInstr &MI, int MBBNo) {
   BasicBlock *BB = getBasicBlock(MBBNo);
   IRBuilder<> Builder(BB);
@@ -693,7 +695,7 @@ bool RISCV64MachineInstructionRaiser::raisePCRelativeAccess(
            MI.getOperand(1).getReg() == MOp1.getReg();
   };
   auto NextMI = std::find_if(MI.getNextNode()->getIterator(),
-                         MI.getParent()->instr_end(), Pred);
+                             MI.getParent()->instr_end(), Pred);
   if (NextMI == MI.getParent()->instr_end()) {
     printFailure(MI, "no corresponding ADDI or LD found for AUIPC or LUI");
     return false;
@@ -716,7 +718,7 @@ bool RISCV64MachineInstructionRaiser::raisePCRelativeAccess(
     Offset = InstOffset + TextOffset + PCOffset + ValueOffset;
   }
   // Absolute offset
-  else if (MI.getOpcode() == LUI) {
+  else if (MI.getOpcode() == LUI || MI.getOpcode() == C_LUI) {
     Offset = PCOffset + ValueOffset;
   }
 
