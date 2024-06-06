@@ -1,3 +1,6 @@
+// NOTE: failing because arrays and structs on stack are not supported yet
+
+// UNSUPPORTED: not-implemented
 // REQUIRES: system-linux
 // REQUIRES: riscv64-linux-gnu-gcc
 // RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
@@ -7,7 +10,6 @@
 // CHECK: 7
 // CHECK: 11
 // CHECK: 15
-// XFAIL: *
 
 #include <stdio.h>
 

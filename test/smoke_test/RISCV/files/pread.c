@@ -1,3 +1,8 @@
+// NOTE: failing because arrays and structs on stack are not supported yet,
+//       also passing structs as arguments is still unstable, also some
+//       unknown problems with file descriptors
+
+// UNSUPPORTED: not-implemented
 // REQUIRES: system-linux
 // REQUIRES: riscv64-linux-gnu-gcc
 // RUN: echo "test" > tmp
@@ -5,7 +10,6 @@
 // RUN: llvm-mctoll -d -debug %t --include-files=/usr/include/stdio.h,/usr/include/stdlib.h,/usr/include/fcntl.h,/usr/include/unistd.h
 // RUN: lli %t-dis.ll | FileCheck %s
 // CHECK: test
-// XFAIL: *
 
 #include <fcntl.h>
 #include <stdio.h>

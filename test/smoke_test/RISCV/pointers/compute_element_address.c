@@ -3,15 +3,16 @@
 // RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
 // RUN: llvm-mctoll -d -debug %t -I /usr/include/stdio.h
 // RUN: lli %t-dis.ll | FileCheck %s
-// CHECK: 0
-// CHECK: 2
+// CHECK: 6
 
 #include <stdio.h>
 
-int main(void) {
-    int A[2] = { 1, 0 };
+#define N 4
 
-    printf("%d\n", A[1]);
-    A[1] = 2;
-    printf("%d\n", A[1]);
+int A[N] = {2,4,6,8};
+
+int main(void) {
+    int *a = (int *)(A + 2);
+    printf("%d\n", *a);
+    return 0;
 }

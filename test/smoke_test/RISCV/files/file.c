@@ -1,3 +1,6 @@
+// NOTE: failing because arrays and structs on stack are not supported yet
+
+// UNSUPPORTED: not-implemented
 // REQUIRES: system-linux
 // REQUIRES: riscv64-linux-gnu-gcc
 // RUN: echo "test" > tmp
@@ -10,7 +13,6 @@
 // CHECK: test
 // CHECK: successfully read file
 // CHECK: successfully closed file
-// XFAIL: *
 
 #include <stdio.h>
 #include <stdlib.h>

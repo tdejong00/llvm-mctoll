@@ -1,3 +1,8 @@
+# NOTE: failing because MCTOLL does not seem to support JALs with zero link
+#       register (i.e. just jumps) for CFG creation: these instructions do
+#       not end the basic block and target does not start a basic block
+
+# UNSUPPORTED: non-functional
 # REQUIRES: system-linux
 # REQUIRES: riscv64-linux-gnu-gcc
 # RUN: riscv64-linux-gnu-gcc -o %t %s
@@ -9,7 +14,6 @@
 # CHECK: 3
 # CHECK: 4
 # CHECK: 5
-# XFAIL: *
 
 	.file	"raise-jump.c"
 	.option pic

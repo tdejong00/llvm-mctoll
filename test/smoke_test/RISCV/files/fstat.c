@@ -1,3 +1,7 @@
+// NOTE: failing because arrays and structs on stack are not supported yet,
+//       also passing structs as arguments is still unstable         
+
+// UNSUPPORTED: not-implemented
 // REQUIRES: system-linux
 // REQUIRES: riscv64-linux-gnu-gcc
 // RUN: echo "test" > tmp
@@ -10,7 +14,6 @@
 // CHECK: Size: 5 bytes
 // CHECK: successfully read file status
 // CHECK: successfully closed file
-// XFAIL: *
 
 #include <fcntl.h>
 #include <stdio.h>
