@@ -207,10 +207,8 @@ bool RISCV64MachineInstructionRaiser::raise() {
   LLVM_DEBUG(dbgs() << "\nBefore raising terminator instructions:\n");
   LLVM_DEBUG(RaisedFunction->dump());
 
-  // Second pass, raise all terminator instructions
+  // Add fall-through branch instructions for basic blocks without terminators
   for (MachineBasicBlock &MBB : MF) {
-    // Check if basic block hase terminator instructions. If not,
-    // add fall through branch instruction to successor basic block.
     if (MBB.getFirstTerminator() == MBB.end() && !MBB.succ_empty()) {
       BasicBlock *CurrBB = BasicBlocks[MBB.getNumber()];
       assert(CurrBB != nullptr && "BB has not been created");
@@ -224,29 +222,14 @@ bool RISCV64MachineInstructionRaiser::raise() {
 
       continue;
     }
-
-    for (MachineInstr &MI : MBB) {
-      if (!MI.isUnconditionalBranch() && !MI.isConditionalBranch()) {
-        continue;
-      }
-
-      // Find recorded info
-      auto It = std::find_if(CTInfo.begin(), CTInfo.end(),
-                             [&MI](ControlTransferInfo *Info) {
-                               return Info->CandidateMachineInstr == &MI;
-                             });
-      assert(It != CTInfo.end() && "Control Transfer Info not recorded");
-
-      if (raiseTerminator(*It)) {
-        printSuccess(MI);
-      }
-
-      CTInfo.erase(It);
-    }
   }
 
-  // All recorded instructions should have been handled
-  assert(CTInfo.empty() && "Unhandled branch instructions");
+  // Raise recorded terminator instructions
+  for (ControlTransferInfo *Info : CTInfo) {
+    if (raiseTerminator(Info)) {
+      printSuccess(*Info->CandidateMachineInstr);
+    }
+  }
 
   LLVM_DEBUG(dbgs() << "\nAfter raising terminator instructions:\n");
   LLVM_DEBUG(RaisedFunction->dump());
