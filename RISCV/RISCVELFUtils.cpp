@@ -322,14 +322,6 @@ GlobalVariable *RISCVELFUtils::getDynRelocValueAtOffset(uint64_t Offset) const {
       ELFObjectFile->getFileName());
   uint64_t SymbolSize = Symbol->st_size;
 
-  // Get section contents
-  SectionRef Section = getSectionAtOffset(Offset);
-  ArrayRef<Byte> SectionContents;
-  if (Section != SectionRef()) {
-    SectionContents =
-        getSectionContents(Section, Offset - Section.getAddress(), SymbolSize);
-  }
-
   // Determine linkage type
   GlobalValue::LinkageTypes Linkage;
   switch (Symbol->getBinding()) {
