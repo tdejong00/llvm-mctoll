@@ -13,10 +13,10 @@ add_llvm_component_library(mctollRISCVRaiser
   RISCVModuleRaiser.cpp
   RISCVCallingConvention.cpp
   RISCVELFUtils.cpp
-  
+
   RISCV32/RISCV32ModuleRaiser.cpp
   RISCV32/RISCV32MachineInstructionRaiser.cpp
-  
+
   RISCV64/RISCV64ModuleRaiser.cpp
   RISCV64/RISCV64MachineInstructionRaiser.cpp
   RISCV64/RISCV64MachineInstructionRaiserUtils.cpp

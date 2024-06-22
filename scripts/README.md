@@ -8,12 +8,15 @@
 - A Linux system is required.
 - All scripts are (at the moment) only meant to be used for the RISC-V raiser.
 - All scripts should be called from the root directory of this repository.
-- It is assumed that there exists a symbolic link to the build directory of the LLVM-project.
+- It is assumed that there exists a symbolic link to the build directory of
+  the LLVM-project.
 - For cross-compiling using clang, both a RISC-V root file system and the
   [RISC-V GNU Compiler Toolchain] need to be installed. The [riscv64-lp64d]
   is known to work correctly. Furthermore, the environment variables
   `RISCV_TOOLCHAIN_PATH` and `RISCV_SYSROOT_PATH` need to be set to the
   path of the toolchain and system root respectively.
+- (Optional) For running the runtime performance experiment, qemu-riscv64
+  needs to be installed.
 
 ## Usage
 
@@ -38,4 +41,8 @@ scripts/recompile.sh scripts/build/factorial
 
 # Alternatively, use the following command, which does both step 3 and 4
 scripts/run.sh [-debug] scripts/build/factorial
+
+# (Optional) 5. Run the experiments
+scripts/experiments/binary_size.sh
+scripts/experiments/runtime_performance.sh
 ```
