@@ -44,5 +44,5 @@ scripts/run.sh [-debug] scripts/build/factorial
 
 # (Optional) 5. Run the experiments
 scripts/experiments/binary_size.sh
-scripts/experiments/runtime_performance.sh
+scripts/experiments/dynamic_guest_instructions.sh
 ```
