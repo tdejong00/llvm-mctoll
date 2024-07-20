@@ -3,8 +3,8 @@
 
 // UNSUPPORTED: not-implemented
 // REQUIRES: system-linux
-// REQUIRES: riscv64-linux-gnu-gcc
-// RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
+// REQUIRES: riscv64-unknown-linux-gnu-gcc
+// RUN: riscv64-unknown-linux-gnu-gcc -fno-stack-protector -o %t %s
 // RUN: llvm-mctoll -d -debug %t --include-files=/usr/include/stdio.h,/usr/include/stdlib.h,/usr/include/x86_64-linux-gnu/sys/time.h
 // RUN: lli %t-dis.ll | FileCheck %s
 // CHECK-NOT: Seconds: 0

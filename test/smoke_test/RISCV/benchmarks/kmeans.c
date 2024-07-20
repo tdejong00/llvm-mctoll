@@ -28,8 +28,8 @@
 
 // UNSUPPORTED: non-functional
 // REQUIRES: system-linux
-// REQUIRES: riscv64-linux-gnu-gcc
-// RUN: riscv64-linux-gnu-gcc -fno-stack-protector -o %t %s
+// REQUIRES: riscv64-unknown-linux-gnu-gcc
+// RUN: riscv64-unknown-linux-gnu-gcc -fno-stack-protector -o %t %s
 // RUN: llvm-mctoll -d -debug %t --include-files=/usr/include/stdio.h,/usr/include/stdlib.h,/usr/include/string.h,/usr/include/unistd.h
 // RUN: lli %t-dis.ll | FileCheck %s
 // CHECK: Dimension = 3
