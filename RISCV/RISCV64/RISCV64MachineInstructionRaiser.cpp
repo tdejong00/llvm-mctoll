@@ -673,7 +673,7 @@ bool RISCV64MachineInstructionRaiser::raisePCRelativeOrAbsoluteAccess(
 
   // Find corresponding ADDI or LD instruction
   auto Pred = [&MOp1](const MachineInstr &MI) {
-    return (MI.getOpcode() == ADDI || MI.getOpcode() == LD) &&
+    return (isAddI(MI.getOpcode()) || isLoad(MI.getOpcode())) &&
            MI.getNumOperands() >= 2 && MI.getOperand(1).isReg() &&
            MI.getOperand(1).getReg() == MOp1.getReg();
   };
