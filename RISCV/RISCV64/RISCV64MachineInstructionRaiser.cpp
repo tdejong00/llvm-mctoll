@@ -605,7 +605,7 @@ bool RISCV64MachineInstructionRaiser::raiseStore(const MachineInstr &MI,
   else if (MOp3.getImm() == 0) {
     Ptr = getRegOrArgValue(MOp2.getReg(), MBBNo);
   }
-  // Store to array
+  // Store to array or global variable
   else {
     Value *ArrayPtr = getRegOrArgValue(MOp2.getReg(), MBBNo);
     if (ArrayPtr == nullptr) {
@@ -621,9 +621,14 @@ bool RISCV64MachineInstructionRaiser::raiseStore(const MachineInstr &MI,
       Ptr = Builder.CreateInBoundsGEP(Ty, GEPOp, Index);
     } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr)) {
       Type *Ty = GlobalVar->getValueType();
-      ConstantInt *Index =
-          toGEPIndex(C, MOp3.getImm(), GlobalVar->getAlign()->value());
-      Ptr = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
+      // Only create GEP for array types, otherwise store to global directly
+      if (Ty->isArrayTy()) {
+        ConstantInt *Index =
+            toGEPIndex(C, MOp3.getImm(), GlobalVar->getAlign()->value());
+        Ptr = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
+      } else {
+        Ptr = GlobalVar;
+      }
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
       Type *Ty = Load->getPointerOperandType();
       // If next instruction is load, determine type from that load instruction
@@ -673,8 +678,9 @@ bool RISCV64MachineInstructionRaiser::raisePCRelativeOrAbsoluteAccess(
 
   // Find corresponding ADDI or LD instruction
   auto Pred = [&MOp1](const MachineInstr &MI) {
-    return (isAddI(MI.getOpcode()) || isLoad(MI.getOpcode())) &&
-           MI.getNumOperands() >= 2 && MI.getOperand(1).isReg() &&
+    return (isAddI(MI.getOpcode()) || isLoad(MI.getOpcode()) ||
+            isStore(MI.getOpcode())) &&
+           MI.getOperand(1).isReg() &&
            MI.getOperand(1).getReg() == MOp1.getReg();
   };
   auto NextMI = std::find_if(MI.getNextNode()->getIterator(),
