@@ -24,6 +24,8 @@
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"
 #include <cstdint>
+#include <string>
+#include <unordered_set>
 #include <zconf.h>
 
 using namespace llvm;
@@ -46,7 +48,7 @@ public:
   /// checks if it has the given name. If the section could not be found (e.g.
   /// an uninitialized global variable) or the given name does not correspond
   /// to the name of the section, a default section will be returned.
-  SectionRef getSectionAtOffset(uint64_t Offset, StringRef Name = "") const;
+  SectionRef getSectionAtOffset(uint64_t Offset, std::unordered_set<std::string> Names) const;
 
   /// Extracts the contents of the given ELF section and returns it as an array
   /// of bytes (unsigned chars) using an optional offset to offset the start

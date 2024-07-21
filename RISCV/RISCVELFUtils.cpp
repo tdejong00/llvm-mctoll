@@ -27,6 +27,8 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
+#include <string>
+#include <unordered_set>
 #include <vector>
 #include <zconf.h>
 
@@ -34,8 +36,9 @@ using namespace llvm;
 using namespace RISCV;
 using namespace mctoll;
 
-SectionRef RISCVELFUtils::getSectionAtOffset(uint64_t Offset,
-                                             StringRef Name) const {
+SectionRef
+RISCVELFUtils::getSectionAtOffset(uint64_t Offset,
+                                  std::unordered_set<std::string> Names) const {
   for (SectionRef Section : ELFObjectFile->sections()) {
     uint64_t SectionAddress = Section.getAddress();
     uint64_t SectionSize = Section.getSize();
@@ -46,7 +49,7 @@ SectionRef RISCVELFUtils::getSectionAtOffset(uint64_t Offset,
           unwrapOrError(Section.getName(), ELFObjectFile->getFileName());
 
       // Check if section has expected name
-      if (Name.empty() || !SectionName.equals(Name)) {
+      if (Names.empty() || Names.find(SectionName.str()) == Names.end()) {
         return SectionRef();
       }
 
@@ -92,8 +95,7 @@ ELFSymbolRef RISCVELFUtils::getSymbolAtOffset(uint64_t Offset) const {
 
 const RelocationRef *
 RISCVELFUtils::getRelocationAtOffset(uint64_t Offset) const {
-  const std::string SectionName = ".plt";
-  SectionRef Section = getSectionAtOffset(Offset, SectionName);
+  SectionRef Section = getSectionAtOffset(Offset, { ".plt" });
   ArrayRef<Byte> SectionContents = getSectionContents(Section);
 
   if (SectionContents.empty()) {
@@ -111,8 +113,7 @@ RISCVELFUtils::getRelocationAtOffset(uint64_t Offset) const {
       SectionContents.slice(InstructionOffset - Section.getAddress()),
       InstructionOffset, nulls());
   assert(Success && "Failed to disassemble AUIPC instruction in PLT");
-  assert(Instruction.getOpcode() == AUIPC &&
-         "expected AUIPC instruction");
+  assert(Instruction.getOpcode() == AUIPC && "expected AUIPC instruction");
 
   uint64_t AUIPCOffset = Instruction.getOperand(1).getImm() << 12;
 
@@ -165,9 +166,7 @@ Function *RISCVELFUtils::getFunctionAtOffset(uint64_t Offset) const {
 
 GlobalVariable *RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
                                                       Value *&Index) const {
-  const std::string SectionName = ".rodata";
-
-  SectionRef Section = getSectionAtOffset(Offset, SectionName);
+  SectionRef Section = getSectionAtOffset(Offset, { ".rodata" });
   if (Section == SectionRef()) {
     return nullptr;
   }
@@ -177,7 +176,7 @@ GlobalVariable *RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
     return nullptr;
   }
 
-  std::string ValueName = SectionName + std::to_string(Section.getIndex());
+  std::string ValueName = ".rodata" + std::to_string(Section.getIndex());
 
   // Check if global variable already created, create it if not
   GlobalVariable *GlobalVar = MR->getModule()->getNamedGlobal(ValueName);
@@ -208,8 +207,7 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
   }
 
   // Get section contents
-  const std::string SectionName = ".data";
-  SectionRef Section = getSectionAtOffset(Offset, SectionName);
+  SectionRef Section = getSectionAtOffset(Offset, { ".data", ".sdata" });
   ArrayRef<Byte> SectionContents;
   if (Section != SectionRef()) {
     SectionContents = getSectionContents(Section, Offset - Section.getAddress(),
