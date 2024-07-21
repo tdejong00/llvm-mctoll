@@ -63,7 +63,6 @@
 #include "llvm/Support/MachineValueType.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
-#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <netinet/in.h>
@@ -165,13 +164,10 @@ bool RISCV64MachineInstructionRaiser::raise() {
         continue;
       }
 
-      // The instruction after an AUIPC is already handled
-      //  during raising of the AUIPC instruction.
-      const MachineInstr *PrevMI = MI.getPrevNode();
-      if (PrevMI != nullptr &&
-          (PrevMI->getOpcode() == AUIPC || PrevMI->getOpcode() == LUI ||
-           PrevMI->getOpcode() == C_LUI)) {
-        printSkipped(MI, "Already raised by previous instruction");
+      // Skip already raised instructions, such as accompanying instructions
+      // for AUIPC and LUI instructions.
+      if (SkippedInstructions.find(&MI) != SkippedInstructions.end()) {
+        printSkipped(MI, "Skipped already raised instruction");
         continue;
       }
 
@@ -533,12 +529,17 @@ bool RISCV64MachineInstructionRaiser::raiseLoad(const MachineInstr &MI,
       Type *Ty = GEPOp->getSourceElementType();
       ConstantInt *Index =
           toGEPIndex(C, MOp3.getImm(), getAlign(MI.getOpcode()));
-      Ptr = Builder.CreateInBoundsGEP(Ty, ArrayPtr, Index);
+      Ptr = Builder.CreateInBoundsGEP(Ty, GEPOp, Index);
     } else if (GlobalVariable *GlobalVar = dyn_cast<GlobalVariable>(ArrayPtr)) {
       Type *Ty = GlobalVar->getValueType();
-      ConstantInt *Index =
-          toGEPIndex(C, MOp3.getImm(), GlobalVar->getAlign()->value());
-      Ptr = Builder.CreateInBoundsGEP(Ty, ArrayPtr, {Zero, Index});
+      // Only create GEP for array types, otherwise store to global directly
+      if (Ty->isArrayTy()) {
+        ConstantInt *Index =
+            toGEPIndex(C, MOp3.getImm(), GlobalVar->getAlign()->value());
+        Ptr = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
+      } else {
+        Ptr = GlobalVar;
+      }
     } else if (LoadInst *Load = dyn_cast<LoadInst>(ArrayPtr)) {
       Type *Ty = getType(C, MI.getOpcode());
       ConstantInt *Index =
@@ -686,7 +687,7 @@ bool RISCV64MachineInstructionRaiser::raisePCRelativeOrAbsoluteAccess(
   auto NextMI = std::find_if(MI.getNextNode()->getIterator(),
                              MI.getParent()->instr_end(), Pred);
   if (NextMI == MI.getParent()->instr_end()) {
-    printFailure(MI, "no corresponding ADDI or LD found for AUIPC or LUI");
+    printFailure(MI, "no corresponding add, load or store instruction found");
     return false;
   }
 
@@ -711,32 +712,40 @@ bool RISCV64MachineInstructionRaiser::raisePCRelativeOrAbsoluteAccess(
     Offset = PCOffset + ValueOffset;
   }
 
+  Value *Val = nullptr;
+
   // Try to resolve the offset to a dynamic relocation
-  GlobalVariable *GlobalVar = ELFUtils.getDynRelocValueAtOffset(Offset);
-  if (GlobalVar != nullptr) {
-    ValueTracker.setRegValue(MBBNo, NextMOp1.getReg(), GlobalVar);
-    return true;
-  }
+  Val = ELFUtils.getDynRelocValueAtOffset(Offset);
 
   // Try to resolve the offset to a .rodata section value
-  Value *Index = nullptr;
-  GlobalVar = ELFUtils.getRODataValueAtOffset(Offset, Index);
-  if (GlobalVar != nullptr) {
-    Type *Ty = GlobalVar->getValueType();
-    Value *GEP = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
-    ValueTracker.setRegValue(MBBNo, NextMOp1.getReg(), GEP);
-    return true;
+  if (Val == nullptr) {
+    Value *Index = nullptr;
+    GlobalVariable *GlobalVar = ELFUtils.getRODataValueAtOffset(Offset, Index);
+    if (GlobalVar != nullptr) {
+      Type *Ty = GlobalVar->getValueType();
+      Val = Builder.CreateInBoundsGEP(Ty, GlobalVar, {Zero, Index});
+    }
   }
 
   // Try to resolve the offset to a .data section value
-  GlobalVar = ELFUtils.getDataValueAtOffset(Offset);
-  if (GlobalVar != nullptr) {
-    ValueTracker.setRegValue(MBBNo, NextMOp1.getReg(), GlobalVar);
-    return true;
+  if (Val == nullptr) {
+    Val = ELFUtils.getDataValueAtOffset(Offset);
   }
 
-  printFailure(MI, "Global value not found");
-  return false;
+  // Failed to resolve offset
+  if (Val == nullptr) {
+    printFailure(MI, "Global value not found");
+    return false;
+  }
+
+  Register RegNo = MOp1.getReg();
+  if (!isLoad(NextMI->getOpcode()) && !isStore(NextMI->getOpcode())) {
+    RegNo = NextMOp1.getReg();
+    SkippedInstructions.insert(&*NextMI);
+  }
+  ValueTracker.setRegValue(MBBNo, RegNo, Val);
+
+  return true;
 }
 
 bool RISCV64MachineInstructionRaiser::raiseCall(const MachineInstr &MI,

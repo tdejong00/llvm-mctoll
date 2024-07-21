@@ -30,6 +30,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
 #include <unordered_map>
+#include <unordered_set>
 #include <zconf.h>
 
 namespace llvm {
@@ -169,6 +170,8 @@ private:
 
   /// A map from a MBB number to the corresponding BB.
   std::unordered_map<int, BasicBlock *> BasicBlocks;
+
+  std::unordered_set<const MachineInstr *> SkippedInstructions;
 };
 
 } // namespace mctoll
