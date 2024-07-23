@@ -78,6 +78,7 @@ using namespace mctoll;
 using namespace RISCV;
 using namespace RISCV64MachineInstructionRaiserUtils;
 
+// NOTE: undefine to disable extra debug information
 #define ENABLE_RAISING_DEBUG_INFO
 
 /// Prints a result message for the machine instruction with an optional message
@@ -126,6 +127,25 @@ RISCV64MachineInstructionRaiser::RISCV64MachineInstructionRaiser(
       MCIR(MCIR), FunctionPrototypeDiscoverer(MF), ValueTracker(this),
       ELFUtils(MR, C) {
   Zero = ConstantInt::get(Type::getInt64Ty(C), 0);
+}
+
+void RISCV64MachineInstructionRaiser::printArgumentRegisters(int MBBNo) {
+  #ifdef ENABLE_RAISING_DEBUG_INFO
+  LLVM_DEBUG(
+    dbgs() << "Argument registers for MBB " << MBBNo << ":\n";
+    for (unsigned int RegNo = RISCV::X10; RegNo <= RISCV::X17; RegNo++) {
+      std::string RegName = getRegName(RegNo);
+      Value *Val = getRegOrArgValue(RegNo, MBBNo);
+      if (Val != nullptr) {
+        dbgs() << RegName << ": ";
+        Val->print(dbgs(), true);
+      } else {
+        dbgs() << RegName << ": null";
+      }
+      dbgs() << "\n";
+    }
+  );
+  #endif
 }
 
 bool RISCV64MachineInstructionRaiser::raise() {
@@ -196,6 +216,8 @@ bool RISCV64MachineInstructionRaiser::raise() {
       // Raise non-terminator instruction
       if (raiseNonTerminator(MI, MBB->getNumber())) {
         printSuccess(MI);
+      } else {
+        printArgumentRegisters(MBB->getNumber());
       }
     }
   }
@@ -224,6 +246,8 @@ bool RISCV64MachineInstructionRaiser::raise() {
   for (ControlTransferInfo *Info : CTInfo) {
     if (raiseTerminator(Info)) {
       printSuccess(*Info->CandidateMachineInstr);
+    } else {
+      printArgumentRegisters(Info->CandidateMachineInstr->getParent()->getNumber());
     }
   }
 

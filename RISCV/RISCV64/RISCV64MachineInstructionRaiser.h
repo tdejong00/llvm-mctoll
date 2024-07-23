@@ -42,6 +42,9 @@ public:
   RISCV64MachineInstructionRaiser(MachineFunction &MF, const ModuleRaiser *MR,
                                   MCInstRaiser *MCIR);
 
+  /// Prints the values of the argument registers.
+  void printArgumentRegisters(int MBBNo);
+
   /// Raises the machine function by traversing the machine basic blocks of the
   /// machine function in loop traversal order. A basic block will be created
   /// for each machine basic block. The raised instructions of the machine
@@ -103,21 +106,21 @@ private:
 
   /// Raises the binary operation by creating a BinaryOperator and assigning it
   /// to the register of the first operand. Integer types are widened in case
-  /// of a mismatch. 
+  /// of a mismatch.
   bool raiseBinaryOperation(BinaryOps BinOp, const MachineInstr &MI, int MBBNo);
 
   /// Raises a MV or LI instruction by assigning the value to the register of
   /// the first operand.
   bool raiseMove(const MachineInstr &MI, int MBBNo);
 
-  /// Raises a LB, LH, LW, or LD instruction by creating a LoadInst instruction 
-  /// using the value of the register of the second operand as the pointer and 
+  /// Raises a LB, LH, LW, or LD instruction by creating a LoadInst instruction
+  /// using the value of the register of the second operand as the pointer and
   /// the immediate of the third operand as the offset. The create instruction
   /// will be assigned to the register of the first operand.
   bool raiseLoad(const MachineInstr &MI, int MBBNo);
 
   /// Raises a SB, SH, SW, or SD instruction by creating a StoreInst instruction
-  /// using the value of the register of the first operand as the value to 
+  /// using the value of the register of the first operand as the value to
   /// store, the value of the register of the second operand as the pointer to
   /// store to, and the immediate of the third operand as the offset.
   bool raiseStore(const MachineInstr &MI, int MBBNo);

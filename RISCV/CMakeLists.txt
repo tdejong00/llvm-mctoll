@@ -25,6 +25,6 @@ add_llvm_component_library(mctollRISCVRaiser
 
   DEPENDS
     ${LLVM_MCTOLL_DEPS}
-  )
+)
 
 target_link_libraries(mctollRISCVRaiser PRIVATE mctollRaiser)
