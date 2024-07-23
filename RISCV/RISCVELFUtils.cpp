@@ -21,7 +21,9 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
@@ -83,9 +85,17 @@ ELFSymbolRef RISCVELFUtils::getSymbolAtOffset(uint64_t Offset) const {
     uint64_t SymbolAddress =
         unwrapOrError(Symbol.getAddress(), ELFObjectFile->getFileName());
     uint64_t SymbolSize = Symbol.getSize();
+    SymbolRef::Type SymbolType =
+        unwrapOrError(Symbol.getType(), ELFObjectFile->getFileName());
+
+    // Ensure symbol is a data symbol
+    if (SymbolType != SymbolRef::Type::ST_Data) {
+      continue;
+    }
 
     // Find symbol which contains the given offset
     if (SymbolAddress <= Offset && SymbolAddress + SymbolSize >= Offset) {
+      dbgs() << Symbol.getELFType() << "\n";
       return Symbol;
     }
   }
@@ -95,7 +105,7 @@ ELFSymbolRef RISCVELFUtils::getSymbolAtOffset(uint64_t Offset) const {
 
 const RelocationRef *
 RISCVELFUtils::getRelocationAtOffset(uint64_t Offset) const {
-  SectionRef Section = getSectionAtOffset(Offset, { ".plt" });
+  SectionRef Section = getSectionAtOffset(Offset, {".plt"});
   ArrayRef<Byte> SectionContents = getSectionContents(Section);
 
   if (SectionContents.empty()) {
@@ -166,7 +176,7 @@ Function *RISCVELFUtils::getFunctionAtOffset(uint64_t Offset) const {
 
 GlobalVariable *RISCVELFUtils::getRODataValueAtOffset(uint64_t Offset,
                                                       Value *&Index) const {
-  SectionRef Section = getSectionAtOffset(Offset, { ".rodata" });
+  SectionRef Section = getSectionAtOffset(Offset, {".rodata"});
   if (Section == SectionRef()) {
     return nullptr;
   }
@@ -207,7 +217,7 @@ GlobalVariable *RISCVELFUtils::getDataValueAtOffset(uint64_t Offset) const {
   }
 
   // Get section contents
-  SectionRef Section = getSectionAtOffset(Offset, { ".data", ".sdata" });
+  SectionRef Section = getSectionAtOffset(Offset, {".data", ".sdata"});
   ArrayRef<Byte> SectionContents;
   if (Section != SectionRef()) {
     SectionContents = getSectionContents(Section, Offset - Section.getAddress(),
