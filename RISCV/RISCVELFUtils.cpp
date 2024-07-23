@@ -44,17 +44,16 @@ RISCVELFUtils::getSectionAtOffset(uint64_t Offset,
   for (SectionRef Section : ELFObjectFile->sections()) {
     uint64_t SectionAddress = Section.getAddress();
     uint64_t SectionSize = Section.getSize();
+    StringRef SectionName =
+        unwrapOrError(Section.getName(), ELFObjectFile->getFileName());
+
+    // Check if section has expected name
+    if (!Names.empty() && Names.find(SectionName.str()) == Names.end()) {
+      continue;
+    }
 
     // Find section which contains the given offset
     if (SectionAddress <= Offset && SectionAddress + SectionSize >= Offset) {
-      StringRef SectionName =
-          unwrapOrError(Section.getName(), ELFObjectFile->getFileName());
-
-      // Check if section has expected name
-      if (Names.empty() || Names.find(SectionName.str()) == Names.end()) {
-        return SectionRef();
-      }
-
       return Section;
     }
   }
@@ -95,7 +94,6 @@ ELFSymbolRef RISCVELFUtils::getSymbolAtOffset(uint64_t Offset) const {
 
     // Find symbol which contains the given offset
     if (SymbolAddress <= Offset && SymbolAddress + SymbolSize >= Offset) {
-      dbgs() << Symbol.getELFType() << "\n";
       return Symbol;
     }
   }
