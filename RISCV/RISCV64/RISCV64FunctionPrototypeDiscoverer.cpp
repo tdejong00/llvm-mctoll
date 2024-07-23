@@ -90,7 +90,9 @@ Type *RISCV64FunctionPrototypeDiscoverer::discoverReturnType() const {
         // Defining instruction loads a global variable pointer
         const MachineInstr *Prev = It->getPrevNode();
         const MachineInstr *Next = It->getNextNode();
-        if (Prev != nullptr && Prev->getOpcode() == AUIPC &&
+        if (Prev != nullptr &&
+            (Prev->getOpcode() == AUIPC || Prev->getOpcode() == LUI ||
+             Prev->getOpcode() == C_LUI) &&
             isAddI(It->getOpcode()) && Next != nullptr &&
             !(isLoad(It->getOpcode()) &&
               getAlign(It->getOpcode()) == DoubleWordAlign)) {
